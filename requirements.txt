@@ -1,0 +1,18 @@
+# Orchestration & LLM
+langgraph>=0.0.20
+langchain-groq>=0.1.0
+langchain-core>=0.1.50
+
+# External APIs
+google-search-results>=2.4.2  # Official library for SerpAPI
+
+# UI
+streamlit>=1.32.0
+
+# Environment Management
+python-dotenv>=1.0.1
+
+# Testing
+pytest>=8.0.0
+
+-e .  # Local package for development

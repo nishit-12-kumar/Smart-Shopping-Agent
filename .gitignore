@@ -1,0 +1,151 @@
+# =============================================================
+# Smart Shopping Agent — .gitignore
+# =============================================================
+
+# ---------------------------------------------------------
+# SECRETS — never commit these, ever
+# ---------------------------------------------------------
+.env
+.env.*
+!.env.example          # keep the template, ignore real values
+secrets.json
+*.key
+*.pem
+
+
+# ---------------------------------------------------------
+# Python runtime artifacts
+# ---------------------------------------------------------
+__pycache__/
+*.py[cod]              # .pyc .pyo .pyd
+*.pdb
+*.so                   # compiled C extensions
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+MANIFEST
+.eggs/
+wheels/
+
+
+# ---------------------------------------------------------
+# Virtual environments
+# ---------------------------------------------------------
+venv/
+.venv/
+env/
+.env/
+ENV/
+env.bak/
+venv.bak/
+
+
+# ---------------------------------------------------------
+# Logs — generated at runtime, never useful in git history
+# Keep the folder itself (via .gitkeep) but ignore log files
+# ---------------------------------------------------------
+logs/*.log
+logs/*.log.*            # rotated backups: agent.log.1 agent.log.2 etc
+!logs/.gitkeep
+
+
+# ---------------------------------------------------------
+# Data / cache — runtime-generated, often large
+# ---------------------------------------------------------
+data/cache/
+*.cache
+.cache/
+__pycache__/
+
+# SerpAPI / API response caches (if you ever add file-based caching)
+data/api_cache/
+
+
+# ---------------------------------------------------------
+# Streamlit
+# ---------------------------------------------------------
+.streamlit/secrets.toml    # Streamlit's own secrets file — treat like .env
+
+
+# ---------------------------------------------------------
+# IDEs and editors
+# ---------------------------------------------------------
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm / IntelliJ
+.idea/
+*.iml
+*.iws
+
+# Jupyter (if you ever add notebooks)
+.ipynb_checkpoints/
+*.ipynb
+
+# Vim / Emacs swap files
+*.swp
+*.swo
+*~
+\#*\#
+
+
+# ---------------------------------------------------------
+# Operating system files
+# ---------------------------------------------------------
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+
+# ---------------------------------------------------------
+# Testing artifacts
+# ---------------------------------------------------------
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.cover
+.hypothesis/
+
+
+# ---------------------------------------------------------
+# Type checking
+# ---------------------------------------------------------
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+
+
+# ---------------------------------------------------------
+# Linting / code quality tools
+# ---------------------------------------------------------
+.ruff_cache/
+
+
+# ---------------------------------------------------------
+# Miscellaneous
+# ---------------------------------------------------------
+*.bak
+*.tmp
+*.temp
+*.orig
