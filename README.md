@@ -4,14 +4,6 @@ An **agentic AI-powered shopping assistant** that thinks before it searches. It 
 
 Built with **LangGraph**, **Groq (Llama 3.3 70B)**, **SerpAPI**, and **Streamlit**.
 
-
----
-
-## 🔗 Live Demo
-
-**[👉 Try it live](https://your-app-name.streamlit.app)**
-
----
 ---
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
@@ -19,6 +11,14 @@ Built with **LangGraph**, **Groq (Llama 3.3 70B)**, **SerpAPI**, and **Streamlit
 ![Groq](https://img.shields.io/badge/Groq-Llama_3.3_70B-purple)
 ![Streamlit](https://img.shields.io/badge/UI-Streamlit-red)
 ![SerpAPI](https://img.shields.io/badge/Data-SerpAPI_Google_Shopping-green)
+
+---
+
+---
+
+## 🔗 Live Demo
+
+**[👉 Try it live](https://smart-shopping-agent-negotiator.streamlit.app/)**
 
 ---
 
