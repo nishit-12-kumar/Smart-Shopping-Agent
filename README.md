@@ -145,14 +145,7 @@ smart-shopping-agent/
 │           ├── spec_options.py           # LLM-generated clarification questions
 │           └── exceptions.py            # SerpAPIError, ShoppingAgentBaseException
 │
-├── data/
-│   └── sample_products.json            # Fallback mock data if SerpAPI quota exhausted
-│
 ├── logs/                               # Runtime conversation logs (gitignored)
-│   └── .gitkeep
-│
-├── tests/
-│   └── ...
 │
 └── docs/
     ├── architecture.md                 # Full node graph, state schema, routing diagram
@@ -166,7 +159,7 @@ smart-shopping-agent/
 ### Prerequisites
 - Python 3.10+
 - A [Groq API key](https://console.groq.com) — free tier available
-- A [SerpAPI key](https://serpapi.com) — free tier: 100 searches/month
+- A [SerpAPI key](https://serpapi.com) — free tier: 250 searches/month
 
 ### 1. Clone the repository
 ```bash
@@ -232,13 +225,6 @@ You:    Hey, what can you do?
 Agent:  I can help you find the best deals on laptops, phones, ACs, and pretty 
         much anything you want to shop for. Just tell me what you're looking for!
 ```
-
-**Summary / comparison:**
-```
-You:    Summarize the recommendations
-Agent:  [Streams a summary of the previously shown products directly]
-```
-
 ---
 
 ## 🛠️ Tech Stack
@@ -318,22 +304,14 @@ ruff check src/
 
 ---
 
-## 📄 License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
----
-
 ## 👤 Author
 
-Built by **[Your Name]**
+Built by **Nishit Kumar**
 
-- GitHub: [@your-username](https://github.com/your-username)
-- LinkedIn: [your-linkedin](https://linkedin.com/in/your-linkedin)
+- [LinkedIn](https://www.linkedin.com/in/nishit-12-kumar/)
 
 ---
 
-> **Free tier note:** SerpAPI's free tier allows 100 searches/month. When quota is exhausted, the app surfaces a clear message to the user and does not silently fall back to mock data — the error is explicit and handled gracefully in `search_products_node`.
 
 
 
