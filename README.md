@@ -1,8 +1,9 @@
 # 🛒 Smart Shopping Negotiator
 
-An **agentic AI shopping assistant** that turns natural-language product requests into validated, structured buying recommendations for the Indian market (₹). Built as a multi-node **LangGraph** pipeline powered by **Groq (Llama 3.3 70B)** for reasoning and **SerpAPI (Google Shopping)** for live product data, with a **Streamlit** chat UI.
+An **agentic AI-powered shopping assistant** that thinks before it searches. It classifies your intent, asks the right clarifying questions, fetches live product data, scores every deal, detects fake discounts, and delivers a polished product recommendation card — all inside a conversational chat interface.
 
-Instead of one big LLM call, the system is broken into focused, single-responsibility nodes — classification, search, deal validation, fake-discount detection, and synthesis — orchestrated as a stateful graph with conditional routing.
+Built with **LangGraph**, **Groq (Llama 3.3 70B)**, **SerpAPI**, and **Streamlit**.
+
 
 ---
 
@@ -11,113 +12,151 @@ Instead of one big LLM call, the system is broken into focused, single-responsib
 **[👉 Try it live](https://your-app-name.streamlit.app)**
 
 ---
+---
 
-## ✨ Features
-
-- **Conversational shopping chat** — ask for a product in plain English (e.g. *"I want a coding laptop under 60k"*).
-- **Chitchat vs. shopping detection** — greetings and small talk are answered directly without touching the expensive search/validation pipeline.
-- **Multi-turn memory** — follow-up questions ("what about the second one?") are answered from previously shown products without a new search.
-- **Dynamic clarification form** — if a query is too vague, the agent generates category-specific spec questions (RAM, storage, star rating, capacity, etc.) *on the fly* via the LLM, not from a hardcoded list — so it works for any product category.
-- **Live product search** — real listings from Google Shopping via SerpAPI (title, price, rating, reviews, thumbnail, source, link), with a local mock fallback if the API fails or hits quota.
-- **Confidence scoring** — every product is scored 0–100 against the user's actual request, with a one-line justification.
-- **Fake-discount / suspicious-pricing detection** — flags listings with inflated pricing or a suspiciously high rating with very few reviews.
-- **Deterministic, hallucination-safe recommendations** — the top pick and alternatives are selected in **Python** by confidence score, not by the LLM. The LLM only supplies reasoning text (why it wins, trade-offs, red flags, bottom line) — so prices and titles shown to the user always come from real data.
-- **Token-by-token streaming** — live typewriter effect for follow-up answers via LangGraph's `stream_mode=["updates", "messages"]`.
-- **Per-conversation logging** — each session gets its own timestamped log file for easy debugging.
+![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
+![LangGraph](https://img.shields.io/badge/LangGraph-Agentic_Pipeline-orange)
+![Groq](https://img.shields.io/badge/Groq-Llama_3.3_70B-purple)
+![Streamlit](https://img.shields.io/badge/UI-Streamlit-red)
+![SerpAPI](https://img.shields.io/badge/Data-SerpAPI_Google_Shopping-green)
 
 ---
 
-## 🏗️ Architecture
+## 📌 What This Project Does
+
+Most shopping chatbots are just a single prompt → single answer. This system is a **7-node multi-agent pipeline** where each node has one focused job:
+
+| What the user experiences | What's happening under the hood |
+|---|---|
+| Types "hi" or "thanks" | `classify_message_type` detects chitchat, replies directly, skips all search nodes |
+| Types "I want to buy a laptop" | `parse_query` detects vague query, triggers dynamic clarification form |
+| Fills in processor, RAM, budget | Refined query built from selections |
+| Sees real products appear | `search_products` calls SerpAPI Google Shopping with live data |
+| Each product has a confidence score | `validate_deals` evaluates product-request fit (0-100) via Groq |
+| Suspicious product flagged | `price_validity` detects fake/inflated discounts |
+| Gets a polished recommendation card | `synthesize` builds structured output — prices never hallucinated |
+| Asks "tell me more about the first one" | `classify_intent` detects follow-up, `answer_followup` replies from memory |
+
+---
+
+## 🧠 Agent Architecture
 
 ```
 User Message
      │
      ▼
-classify_message_type   ← chitchat or shopping?
-     │                   │
-  CHITCHAT           SHOPPING
-     │                   │
-    END           classify_intent   ← follow-up or new search?
-                     │         │
-               FOLLOW_UP      NEW
-                     │         │
-             answer_followup  parse_query   ← enough specs to search?
-                     │           │        │
-                    END   needs_clarification   has_specs
-                                  │              │
-                                 END        search_products   ← SerpAPI call
-                            (UI shows              │
-                             spec form)      validate_deals   ← confidence scoring
-                                                    │
-                                             price_validity   ← fake discount detection
-                                                    │
-                                               synthesize      ← build final recommendation
-                                                    │
-                                                   END
+classify_message_type ──CHITCHAT──► END (direct conversational reply)
+     │
+   SHOPPING
+     │
+     ▼
+classify_intent ──FOLLOW_UP──► answer_followup ──► END
+     │
+    NEW
+     │
+     ▼
+parse_query ──needs clarification──► END (Streamlit spec form renders)
+     │
+  has specs
+     │
+     ▼
+search_products (SerpAPI Google Shopping)
+     │
+     ▼
+validate_deals (confidence scoring 0-100 per product)
+     │
+     ▼
+price_validity (fake discount detection)
+     │
+     ▼
+synthesize (structured card — LLM reasons, never invents prices)
+     │
+     ▼
+    END
 ```
-
-| Node | Job |
-|---|---|
-| `classify_message_type` | Entry point — CHITCHAT vs SHOPPING; replies directly and ends the graph for chitchat |
-| `classify_intent` | Follow-up vs new search, using `last_shown_deals` as memory |
-| `answer_followup` | Answers questions about already-shown products without re-searching (streamed) |
-| `parse_query` | Decides if the query has enough specs to search, or needs the clarification form |
-| `search_products` | Calls SerpAPI (`google_shopping` engine), with mock-data fallback |
-| `validate_deals` | Scores each product 0–100 against the user's request; flags rating/review mismatches |
-| `price_validity` | Detects artificially inflated / suspicious pricing |
-| `synthesize` | Deterministically (Python) picks top pick + alternatives; asks the LLM only for reasoning text; saves memory for follow-ups |
-
-See [`docs/architecture.md`](docs/architecture.md) for the full node-by-node breakdown and state schema, and [`docs/decisions.md`](docs/decisions.md) for the engineering rationale behind every major design choice (why LangGraph, why Groq, why SerpAPI, why deterministic product selection, known limitations, and what would change in production).
 
 ---
 
-## 🧰 Tech Stack
+## ✨ Features
 
-| Layer | Tool | Purpose |
-|---|---|---|
-| Orchestration | LangGraph | State graph, conditional routing |
-| LLM | Groq (Llama 3.3 70B) | Classification, scoring, synthesis |
-| Structured output | LangChain + Pydantic | Typed, hallucination-resistant LLM output |
-| Product data | SerpAPI (Google Shopping) | Live listings, prices, ratings, images |
-| UI | Streamlit | Chat interface, spec form, recommendation cards |
-| Secrets | python-dotenv | `.env`-based API key management |
-| Logging | Python `logging` | Per-conversation log files (`logs/`) |
+### Agentic Intelligence
+- **Intent classification** — distinguishes chitchat ("hi", "thanks") from genuine shopping requests using Groq, not keyword lists
+- **Follow-up memory** — follow-up questions answered directly from previous results, no re-searching
+- **Dynamic clarification form** — Groq generates product-specific questions (AC needs room size and tonnage, laptop needs RAM and processor, shoes need size and type) — works for any product, not a hardcoded form
+- **Vague query detection** — "I want to buy a laptop" triggers clarification; "laptop with 16GB RAM under ₹60,000" proceeds directly to search
+
+### Data & Validation
+- **Live product data** — real products and prices from Google Shopping via SerpAPI
+- **Confidence scoring** — every product rated 0-100 for fit against the user's actual request (not just price sorting)
+- **Fake discount detection** — flags products with artificially inflated "original prices"
+- **Review trust check** — warns about products with high ratings but suspiciously few reviews
+- **Hallucination-proof output** — prices, titles, and images always come from real SerpAPI data; the LLM only generates reasoning text
+
+### UI & Experience
+- **Product image cards** — thumbnail photos from SerpAPI shown in the recommendation card
+- **Star ratings** — real buyer ratings (e.g. ★★★★☆ 4.3/5 from 2,400 reviews) rendered visually
+- **Color-coded confidence badges** — green (85+), yellow (60-84), red (below 60)
+- **Clickable "View deal" links** — direct links to the seller's page; falls back to a Google Shopping search if SerpAPI doesn't return a direct URL
+- **Spec match tags** — ✓ tags showing which of the user's preferences this product satisfies
+- **Red flag banners** — suspicious pricing highlighted in a distinct warning block
+- **Follow-up suggestion chips** — two tappable buttons after every recommendation for natural next questions
+- **Live agent progress** — "✅ Completed: validate_deals" checkmarks appear as each node finishes
+- **Per-conversation logging** — each chat session gets its own timestamped log file in `logs/`
 
 ---
 
-## 📁 Project Structure
+## 🗂️ Project Structure
 
 ```
-Demo_Shopping/
-├── app.py                          # Streamlit UI — chat, spec form, card rendering
+smart-shopping-agent/
+│
+├── app.py                              # Streamlit UI — chat interface, card rendering
 ├── requirements.txt
-├── setup.py                        # Editable install (adds src/ to PYTHONPATH)
-├── docs/
-│   ├── architecture.md             # Full system architecture
-│   └── decisions.md                # Engineering decisions & trade-offs
-├── logs/                           # Per-conversation timestamped log files
-└── src/shopping_agent/
-    ├── config.py                   # Loads GROQ_API_KEY / SERPAPI_API_KEY from .env
-    ├── graph/
-    │   ├── builder.py              # Compiles the LangGraph state machine
-    │   ├── edges.py                # Conditional routing logic
-    │   └── state.py                # ShoppingState (shared TypedDict)
-    ├── nodes/
-    │   ├── classify_message_type.py
-    │   ├── classify_intent.py
-    │   ├── answer_followup.py
-    │   ├── parse_query.py
-    │   ├── search_products.py
-    │   ├── validate_deals.py
-    │   ├── price_validity.py
-    │   └── synthesize.py
-    ├── services/
-    │   ├── groq_client.py          # Groq LLM client wrapper
-    │   └── serpapi_client.py       # SerpAPI client wrapper
-    └── utils/
-        ├── logger.py                # Per-conversation logging setup
-        ├── spec_options.py          # Dynamic clarification-form generation
-        └── exceptions.py
+├── setup.py
+├── .env.example
+├── .gitignore
+├── README.md
+│
+├── src/
+│   └── shopping_agent/
+│       ├── config.py                   # Loads .env, validates API keys present
+│       │
+│       ├── graph/
+│       │   ├── state.py                # ShoppingState TypedDict — shared across all nodes
+│       │   ├── builder.py              # Compiles and wires the LangGraph graph
+│       │   └── edges.py                # Conditional routing functions
+│       │
+│       ├── nodes/
+│       │   ├── classify_message_type.py  # Chitchat vs shopping intent
+│       │   ├── classify_intent.py        # Follow-up vs new search detection
+│       │   ├── answer_followup.py        # Answers from memory, skips search entirely
+│       │   ├── parse_query.py            # Spec-sufficiency check, triggers clarification
+│       │   ├── search_products.py        # SerpAPI call, quota-error handling
+│       │   ├── validate_deals.py         # Confidence scoring via Groq + review-trust flag
+│       │   ├── price_validity.py         # Fake discount detection via Groq
+│       │   └── synthesize.py             # Structured card output — deterministic product selection
+│       │
+│       ├── services/
+│       │   ├── groq_client.py            # Groq LLM client (Llama 3.3 70B, temp=0)
+│       │   └── serpapi_client.py         # SerpAPI wrapper, product_link extraction
+│       │
+│       └── utils/
+│           ├── logger.py                 # Per-conversation timestamped log files
+│           ├── spec_options.py           # LLM-generated clarification questions
+│           └── exceptions.py            # SerpAPIError, ShoppingAgentBaseException
+│
+├── data/
+│   └── sample_products.json            # Fallback mock data if SerpAPI quota exhausted
+│
+├── logs/                               # Runtime conversation logs (gitignored)
+│   └── .gitkeep
+│
+├── tests/
+│   └── ...
+│
+└── docs/
+    ├── architecture.md                 # Full node graph, state schema, routing diagram
+    └── decisions.md                    # Engineering decisions and trade-offs
 ```
 
 ---
@@ -125,105 +164,192 @@ Demo_Shopping/
 ## 🚀 Getting Started
 
 ### Prerequisites
-
 - Python 3.10+
-- A [Groq API key](https://console.groq.com) (free tier available)
-- A [SerpAPI key](https://serpapi.com) (free tier: 250 searches/month)
+- A [Groq API key](https://console.groq.com) — free tier available
+- A [SerpAPI key](https://serpapi.com) — free tier: 100 searches/month
 
-### Installation
-
+### 1. Clone the repository
 ```bash
-git clone <your-repo-url>
-cd Demo_Shopping
-
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-
-pip install -e .                # installs deps + adds src/ to PYTHONPATH
+git clone https://github.com/your-username/smart-shopping-agent.git
+cd smart-shopping-agent
 ```
 
-### Configure API keys
+### 2. Create and activate a virtual environment
+```bash
+python -m venv venv
 
-Create a `.env` file in the project root:
+# Windows
+venv\Scripts\activate
 
-```env
-GROQ_API_KEY=your_groq_api_key_here
+# macOS / Linux
+source venv/bin/activate
+```
+
+### 3. Install dependencies
+```bash
+pip install -e .
+```
+
+### 4. Configure environment variables
+```bash
+cp .env.example .env
+```
+
+Open `.env` and add your keys:
+```
+GROQ_API_KEY=your_groq_key_here
 SERPAPI_API_KEY=your_serpapi_key_here
 ```
 
-### Run the app
-
+### 5. Run the app
 ```bash
 streamlit run app.py
 ```
 
-Open the URL Streamlit prints (usually `http://localhost:8501`) and start chatting — e.g. *"I want to buy a coding laptop under 60k"*.
+Open `http://localhost:8501` in your browser.
 
 ---
 
-## 💬 Example Flow
+## 💬 Example Conversations
 
-1. **User:** "I need a good washing machine"
-2. **Agent:** Not enough specs → shows a dynamically generated clarification form (capacity, type, star rating, brand preference…)
-3. **User:** Fills in specs, submits
-4. **Agent:** Searches live listings → validates deals → checks pricing → returns a **Top Pick** card with price, rating, matched specs, alternatives, red flags, and a bottom-line summary
-5. **User:** "Is the second one worth it?"
-6. **Agent:** Recognizes this as a follow-up → answers directly from the already-fetched products (streamed token-by-token), no new search needed
+**Fresh product search:**
+```
+You:    I want to buy a gaming laptop
+Agent:  [Clarification form: Budget? / Primary use? / RAM? / Brand?]
+You:    ₹80,000-₹1,00,000 / Gaming / 16GB / No preference
+Agent:  [Product card: top pick with image, rating, price, spec tags, buy link + alternatives]
+```
+
+**Follow-up question:**
+```
+You:    Tell me more about the first option
+Agent:  [Answers directly from previous results — no new API calls triggered]
+```
+
+**Chitchat:**
+```
+You:    Hey, what can you do?
+Agent:  I can help you find the best deals on laptops, phones, ACs, and pretty 
+        much anything you want to shop for. Just tell me what you're looking for!
+```
+
+**Summary / comparison:**
+```
+You:    Summarize the recommendations
+Agent:  [Streams a summary of the previously shown products directly]
+```
 
 ---
 
-## 📸 Screenshots
+## 🛠️ Tech Stack
 
-> Add your own screenshots/GIFs here — this is what most people look at first on GitHub. Save images to a `docs/images/` (or `assets/`) folder in the repo, then reference them below.
+| Tool | Version | Role |
+|---|---|---|
+| Python | 3.10+ | Core language |
+| LangGraph | ≥0.0.20 | Multi-agent orchestration, conditional routing |
+| LangChain-Groq | ≥0.1.0 | Groq LLM client integration |
+| LangChain-Core | ≥0.1.50 | Prompts, Pydantic structured output |
+| Groq / Llama 3.3 70B | — | All LLM reasoning (classification, scoring, synthesis) |
+| SerpAPI | ≥2.4.2 | Live Google Shopping product data |
+| Streamlit | ≥1.32.0 | Chat UI, card rendering, clarification form |
+| Pydantic | ≥2.0.0 | Typed structured output schemas for LLM calls |
+| python-dotenv | ≥1.0.1 | Environment variable / secret management |
 
-| Chat interface | Recommendation card |
+---
+
+## 🔑 Environment Variables
+
+| Variable | Required | Where to get it |
+|---|---|---|
+| `GROQ_API_KEY` | ✅ | [console.groq.com](https://console.groq.com) |
+| `SERPAPI_API_KEY` | ✅ | [serpapi.com](https://serpapi.com) |
+
+---
+
+## 🔐 Security Notes
+
+- API keys are loaded via `.env` — never committed to git (`.gitignore` covers `.env`)
+- `.env.example` is committed as a template showing required keys without real values
+- Input queries are passed directly to Groq prompts — no SQL or shell execution, so injection risk is low; standard LLM prompt-injection awareness applies
+
+---
+
+## 📊 Production Considerations
+
+This project is designed as a portfolio demo. For a production deployment, the following changes would apply:
+
+| Area | Current | Production equivalent |
+|---|---|---|
+| State persistence | In-memory `ShoppingState` per session | Redis or PostgreSQL for multi-user persistence |
+| Authentication | None | Auth0 / Supabase for user accounts |
+| Search volume | SerpAPI free tier (100/month) | Paid SerpAPI plan or direct retailer API |
+| Logging | Per-conversation flat files | Structured JSON → Datadog / CloudWatch |
+| Deployment | Local Streamlit | Streamlit Cloud / Railway / GCP Cloud Run |
+| Secrets | `.env` file | AWS Secrets Manager / GCP Secret Manager |
+
+See [`docs/decisions.md`](docs/decisions.md) for the full reasoning behind every major design choice.
+
+---
+
+## 📁 Documentation
+
+| File | Contents |
 |---|---|
-| ![Chat interface](docs/images/chat-interface.png) | ![Recommendation card](docs/images/recommendation-card.png) |
-
-| Clarification form | Follow-up / streaming answer |
-|---|---|
-| ![Clarification form](docs/images/clarification-form.png) | ![Follow-up answer](docs/images/followup-streaming.png) |
-
-**Suggested shots to capture:**
-- Initial chat screen with the greeting message
-- A vague query triggering the dynamic clarification form
-- A completed Top Pick recommendation card (with alternatives, red flags, bottom line visible)
-- A follow-up question being answered with the live typewriter/streaming effect
-- The sidebar showing the system architecture panel
-
-**How to add them:**
-1. Create the folder: `mkdir -p docs/images`
-2. Drop your `.png`/`.gif` files in there
-3. Reference them in this README using `![alt text](docs/images/your-file.png)`
-4. For a quick demo GIF, tools like [ScreenToGif](https://www.screentogif.com/) (Windows) or `Cmd+Shift+5` (macOS) work well — keep it under ~10MB so it renders smoothly on GitHub.
+| [`docs/architecture.md`](docs/architecture.md) | Full node graph, state object schema, routing diagram, UI architecture |
+| [`docs/decisions.md`](docs/decisions.md) | 10 engineering decisions with reasoning, trade-offs, and known limitations |
 
 ---
 
-## ⚠️ Known Limitations
+## 🧪 Running Tests
 
-- Price history shown in the UI is an estimated trend, not real historical data (would require a paid service like Keepa).
-- Review text isn't fetched — only rating and review count (SerpAPI's `google_shopping` engine doesn't return snippets).
-- Follow-up vs. new-search classification can misfire on genuinely ambiguous phrasing.
-- No user authentication — conversation history lives only in `st.session_state` and resets on page refresh.
+```bash
+# Install with dev dependencies
+pip install -e ".[dev]"
 
-Full list and reasoning in [`docs/decisions.md`](docs/decisions.md#10-known-limitations-and-honest-trade-offs).
+# Run tests
+pytest
+
+# Dead code check
+vulture app.py src/
+
+# Lint
+ruff check src/
+```
 
 ---
 
-## 🏭 What Would Change in Production
+## 📄 License
 
-| Demo (current) | Production |
-|---|---|
-| In-memory Streamlit session state | Redis / PostgreSQL for persistent multi-user state |
-| Flat per-conversation log files | Structured JSON logs → Datadog/CloudWatch |
-| SerpAPI free tier (100 searches/mo) | Paid SerpAPI plan or direct retailer API |
-| Local Streamlit server | Streamlit Cloud / Railway / GCP Cloud Run |
-| `.env` file | AWS/GCP Secrets Manager |
-| Groq free tier | Paid Groq or Anthropic/OpenAI based on cost/quality |
-| No auth | Auth0 / Supabase with persistent search history |
+MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
 ## 👤 Author
 
-**Nishit Kumar**
+Built by **[Your Name]**
+
+- GitHub: [@your-username](https://github.com/your-username)
+- LinkedIn: [your-linkedin](https://linkedin.com/in/your-linkedin)
+
+---
+
+> **Free tier note:** SerpAPI's free tier allows 100 searches/month. When quota is exhausted, the app surfaces a clear message to the user and does not silently fall back to mock data — the error is explicit and handled gracefully in `search_products_node`.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
