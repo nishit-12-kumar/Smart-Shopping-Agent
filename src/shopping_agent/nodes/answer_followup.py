@@ -16,6 +16,18 @@ def answer_followup_node(state: ShoppingState) -> ShoppingState:
     """
     agent_logger.info("Entering answer_followup_node.")
 
+    # IMPORTANT: graph_state is a single dict that persists across the whole
+    # conversation. The last real search left `structured_recommendation`
+    # populated with the previous card's data, and nothing clears it
+    # automatically. app.py decides what to render with:
+    #   if structured and not clarification_needed: render the card
+    #   elif plain_recommendation: render this node's text answer
+    # Since `structured` was still truthy from the earlier turn, every
+    # follow-up answer generated here was being silently discarded in favor
+    # of re-rendering the stale card. Clearing it here is what lets app.py
+    # actually show the fresh answer below instead.
+    state["structured_recommendation"] = None
+
     try:
         user_query = state.get("user_query", "")
         last_shown_deals = state.get("last_shown_deals", [])

@@ -7,7 +7,6 @@ from src.shopping_agent.utils.logger import agent_logger
 
 MAX_ALTERNATIVES = 2
 
-
 # --- Output schema: LLM only fills in REASONING, never prices/titles/IDs ---
 # This guarantees the card always shows real data — the LLM can't hallucinate
 # a price or product name since those are taken directly from validated_deals.
@@ -78,11 +77,16 @@ def synthesize_node(state: ShoppingState) -> ShoppingState:
         deals = state.get("validated_deals", [])
 
         if not deals:
-            agent_logger.warning("No deals to synthesize. Returning fallback message.")
-            state["final_recommendation"] = (
-                "I couldn't find any products that meet your criteria with high confidence. "
-                "Could we try adjusting your budget or brand preferences?"
-            )
+            serpapi_error_message = state.get("serpapi_error_message")
+            if serpapi_error_message:
+                agent_logger.warning("No deals to synthesize — SerpAPI was unavailable.")
+                state["final_recommendation"] = serpapi_error_message
+            else:
+                agent_logger.warning("No deals to synthesize. Returning fallback message.")
+                state["final_recommendation"] = (
+                    "I couldn't find any products that meet your criteria with high confidence. "
+                    "Could we try adjusting your budget or brand preferences?"
+                )
             state["structured_recommendation"] = None
             return state
 

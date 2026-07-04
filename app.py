@@ -32,7 +32,8 @@ st.markdown("""
         overflow: hidden;
         margin-bottom: 14px;
     }
-    .toppick-img { width: 100%; height: 180px; object-fit: cover; display: block; }
+
+    .toppick-img { width: 100% !important; height: auto !important; object-fit: contain !important; display: block !important; max-height: 280px !important; background: #0d0f14; }
     .toppick-body { padding: 14px 16px; }
     .badge-score-high { background: rgba(46,160,67,0.15); color: #3fb950; font-size: 11px; padding: 3px 9px; border-radius: 6px; }
     .badge-score-mid { background: rgba(240,196,25,0.15); color: #f0c419; font-size: 11px; padding: 3px 9px; border-radius: 6px; }
@@ -99,7 +100,6 @@ def get_product_link(product: dict) -> str:
     return f"https://www.google.com/search?q={query}&tbm=shop"
 
 
-# def render_recommendation_card(structured: dict):
 def render_recommendation_card(structured: dict, render_key: str = ""):
     """
     Renders the full product recommendation card (top pick, alternatives,
@@ -119,7 +119,7 @@ def render_recommendation_card(structured: dict, render_key: str = ""):
 
         st.markdown(f"""
         <div class="toppick-card">
-            <img src="{top['thumbnail']}" class="toppick-img" style="width:100%; height:180px; object-fit:cover; display:block;" />
+            <img src="{top['thumbnail']}" class="toppick-img" style="width:100%; height:auto; max-height:280px; object-fit:contain; display:block; background:#0d0f14;" />
             <div class="toppick-body">
                 <p style="font-weight:600; font-size:15px; margin:0 0 4px;">{top.get('title','')}</p>
                 <div style="margin-bottom:6px;">{render_star_rating(top.get('rating'), top.get('reviews'))}</div>
@@ -228,7 +228,8 @@ if "graph_state" not in st.session_state:
         errors=[],
         conversation_history=[],
         last_shown_deals=[],
-        intent="NEW"
+        intent="NEW",
+        serpapi_error_message=None
     )
 
 if "pending_chip_prompt" not in st.session_state:
@@ -260,7 +261,8 @@ with st.sidebar:
             errors=[],
             conversation_history=[],
             last_shown_deals=[],
-            intent="NEW"
+            intent="NEW",
+            serpapi_error_message=None
         )
         start_new_conversation_log()
         st.rerun()
@@ -283,6 +285,7 @@ for msg_idx, msg in enumerate(st.session_state.messages):
 def run_agent_pipeline(user_input_query):
     st.session_state.graph_state["user_query"] = user_input_query
     st.session_state.graph_state["errors"] = []
+    st.session_state.graph_state["serpapi_error_message"] = None
 
     with st.chat_message("assistant"):
         text_placeholder = st.empty()
@@ -432,3 +435,4 @@ if prompt := st.chat_input("Ask for a product or provide more details...", disab
 
     run_agent_pipeline(prompt)
     st.rerun()
+    

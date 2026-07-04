@@ -102,10 +102,12 @@ Checks the query for numeric specs, spec-related keywords (GB, ton, star, inch),
 ### `search_products`
 **Fetches real, live product data from Google Shopping.**
 
-Calls SerpAPI's `google_shopping` engine with the user's refined query (original query + chosen specs from the clarification form). Returns up to 5 products with title, price, source, rating, review count, thumbnail image URL, and product link. Falls back to a local mock dataset if the API fails or quota is exhausted.
+Calls SerpAPI's `google_shopping` engine with the user's refined query (original query + chosen specs from the clarification form). Returns up to 5 products with title, price, source, rating, review count, thumbnail image URL, and product link (parsed from SerpAPI's `product_link` field).
+
+If SerpAPI itself fails — quota exhausted, invalid key, or a connection error — `SerpApiClient` raises a `SerpAPIError` rather than silently returning empty or fake data. This node catches it, classifies the message (quota-related keywords vs. a generic failure), and stores a clear, user-facing explanation in `serpapi_error_message`. `raw_products` is set to `[]` either way, so the rest of the pipeline (`validate_deals`, `price_validity`) skips gracefully, and `synthesize` surfaces the explanation directly instead of a generic "no products found" message.
 
 - Input: `search_params` (query string)
-- Output: `raw_products` (list of product dicts)
+- Output: `raw_products` (list of product dicts), `serpapi_error_message` (set only on failure)
 - Routes to: `validate_deals`
 
 ---
@@ -137,9 +139,11 @@ Sends all validated products to Groq with a focused prompt: "Does this price loo
 
 This node deliberately does NOT ask the LLM to pick products or generate prices. Instead, it selects the top pick and alternatives deterministically in Python code (sorted by `confidence_score`), then asks Groq only for the qualitative reasoning fields via a Pydantic schema: `why_it_wins`, `specs_matched`, `specs_warning`, `alternative_trade_offs`, `red_flags`, `bottom_line`, and `follow_up_suggestions`. The final `structured_recommendation` dict combines real product data (prices, titles, images) with LLM-generated reasoning text — guaranteeing the UI can never show a hallucinated price.
 
+If there are no deals to synthesize, this node checks `serpapi_error_message` first: if set (SerpAPI failed upstream), that explanation becomes `final_recommendation` directly, no LLM call made. Otherwise it falls back to a generic "try adjusting your budget or brand preferences" message — this is the genuinely-no-matching-products case, distinct from a SerpAPI outage.
+
 Also saves `last_shown_deals` and `conversation_history` to state for multi-turn memory.
 
-- Input: `validated_deals`, `user_query`
+- Input: `validated_deals`, `user_query`, `serpapi_error_message`
 - Output: `structured_recommendation`, `final_recommendation` (short text for follow-up context), `last_shown_deals`, `conversation_history`
 - Routes to: `END`
 
@@ -155,6 +159,7 @@ class ShoppingState(TypedDict):
     clarification_needed: bool                   # triggers spec form in UI
     search_params: Optional[Dict[str, Any]]      # refined query + referenced product
     raw_products: List[Dict[str, Any]]           # SerpAPI results
+    serpapi_error_message: Optional[str]         # set when SerpAPI itself fails (quota/outage); lets synthesize show a clear reason instead of "no products found"
     validated_deals: List[Dict[str, Any]]        # products + scores + flags
     message_type: str                            # "CHITCHAT" or "SHOPPING"
     final_recommendation: str                    # plain text (for follow-up context)
@@ -164,6 +169,19 @@ class ShoppingState(TypedDict):
     last_shown_deals: List[Dict[str, Any]]       # products from most recent search
     intent: str                                  # "NEW" or "FOLLOW_UP"
 ```
+
+---
+
+## Error Handling: SerpAPI Failures
+
+`SerpApiClient.search_google_shopping()` never silently returns fake or empty-looking data on failure — it raises a `SerpAPIError` (defined in `utils/exceptions.py`), which propagates up to `search_products_node`. That node classifies the failure into one of two user-facing messages:
+
+- **Quota/usage related** (message contains phrases like "run out of searches", "exceeded", "quota", "usage limit") → a message telling the user the search quota is temporarily used up.
+- **Anything else** (network failure, invalid key, etc.) → a generic "SerpAPI is currently unavailable, try again shortly" message.
+
+This message is stored in `serpapi_error_message` and surfaces directly through `synthesize_node` as the final response, instead of being confused with a normal "no products matched your criteria" outcome.
+
+**Known rough edge:** SerpAPI also uses the same `"error"` field for a completely different situation — a query that legitimately has zero shopping results (e.g. an overly specific search). Today this is indistinguishable from a real outage and shows the same "SerpAPI unavailable" message, even though retrying won't help — broadening the query would. This is a known limitation, not yet special-cased (see `docs/decisions.md`).
 
 ---
 

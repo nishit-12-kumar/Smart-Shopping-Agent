@@ -126,16 +126,31 @@ A single growing log file makes debugging hard — finding the relevant lines fo
 | `.env` file for secrets | AWS Secrets Manager or GCP Secret Manager |
 | Groq free tier | Paid Groq or switch to Anthropic/OpenAI based on cost/quality needs |
 | No authentication | Auth0 or Supabase for user accounts + search history persistence |
-| Fallback to mock JSON on API failure | Proper circuit breaker pattern with alerting |
+| SerpAPI failure shown as a plain in-chat message | Proper circuit breaker + retry with exponential backoff, plus alerting to the team when quota nears its limit |
 
 ---
 
-## 10. Known limitations and honest trade-offs
+## 10. Why surface SerpAPI failures explicitly instead of falling back to mock data?
 
-- **Price history is not real data.** The `price_history_node` generates an estimated trend based on the current price and suspicious-pricing flags. Real historical price tracking would require Keepa (Amazon only, paid) or building a price-tracking database over time. This is clearly labeled in the UI.
+**Decision:** When SerpAPI fails (quota exhausted, invalid key, network error), `search_products_node` shows the user a plain explanation ("SerpAPI search quota has been used up for now...") instead of quietly substituting a local mock product catalog.
+
+**Reasoning:**
+An earlier version of this project fell back to a static local JSON file of sample products whenever SerpAPI failed, so the demo would "still work." In practice this is worse than an honest error: the user has no way to tell real, live prices from fabricated demo data, which is exactly the kind of silent failure a shopping assistant shouldn't have — trust in the prices shown is the entire point of the product. An explicit message costs nothing and can't be mistaken for a real deal.
+
+**Trade-off:** A live demo can go visibly blank if the SerpAPI quota runs out mid-demo, which a fallback would have papered over. Considered acceptable — an honest "quota's out, try again shortly" message is a better failure mode than a shopping tool that might be silently lying about prices.
+
+**Production note:** `SerpAPIError` (in `utils/exceptions.py`) is the single point where this distinction is made — a retry/circuit-breaker layer would wrap around `SerpApiClient.search_google_shopping()` without needing to touch any node code.
+
+---
+
+## 11. Known limitations and honest trade-offs
+
+- **Price analysis is not based on real historical price data.** `price_validity_node` asks the LLM to judge whether a listed price looks inflated using its general knowledge of market pricing for that product category — it does not track or graph actual price history over time. Real historical price tracking would require a paid service like Keepa (Amazon-only) or building a price database over time. This is clearly framed in the UI as an LLM judgment call, not verified history.
 
 - **Review text is not fetched.** SerpAPI's `google_shopping` engine returns rating and review count, but not review text. Fetching actual review snippets requires a second SerpAPI call using the `google_product` engine with a product ID — planned but not implemented due to API quota constraints.
 
 - **Follow-up classification can misfire on ambiguous queries.** "Show me something else" is genuinely ambiguous — is it a follow-up ("something else from what you showed me") or a new search? The classifier uses a prompt that biases toward FOLLOW_UP when products were recently shown, but edge cases exist.
+
+- **SerpAPI's "no results" and "real failure" cases aren't distinguished yet.** SerpAPI returns a query that legitimately has zero shopping matches through the same `"error"` field used for actual outages/quota problems. Both currently surface the same "SerpAPI unavailable" message, even though the right next step is different (broaden the search vs. wait and retry). Flagged as a follow-up fix, not yet implemented.
 
 - **No user authentication or persistent history.** Conversation history lives only in `st.session_state` and is lost on page refresh. A real product would persist this to a database tied to a user account.
