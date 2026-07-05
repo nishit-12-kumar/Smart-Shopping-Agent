@@ -1,4 +1,4 @@
-# Smart Shopping Negotiator — Engineering Decisions & Trade-offs
+# Smart Shopping Agent — Engineering Decisions & Trade-offs
 
 This document records the key engineering decisions made during development,
 the reasoning behind each choice, and what would change in a production system.

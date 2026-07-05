@@ -1,8 +1,8 @@
-# Smart Shopping Negotiator — System Architecture
+# Smart Shopping Agent — System Architecture
 
 ## Overview
 
-The Smart Shopping Negotiator is a multi-agent AI pipeline that processes natural language shopping requests into structured product recommendations. Instead of one large LLM call, the system is broken into specialized nodes — each doing one focused job — orchestrated by LangGraph as a stateful graph.
+The Smart Shopping Agent is a multi-agent AI pipeline that processes natural language shopping requests into structured product recommendations. Instead of one large LLM call, the system is broken into specialized nodes — each doing one focused job — orchestrated by LangGraph as a stateful graph.
 
 ---
 

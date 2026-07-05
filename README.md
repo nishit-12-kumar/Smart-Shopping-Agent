@@ -1,4 +1,4 @@
-# 🛒 Smart Shopping Negotiator
+# 🛒 Smart Shopping Agent
 
 An **agentic AI-powered shopping assistant** that thinks before it searches. It classifies your intent, asks the right clarifying questions, fetches live product data, scores every deal, detects fake discounts, and delivers a polished product recommendation card — all inside a conversational chat interface.
 
