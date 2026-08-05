@@ -75,6 +75,27 @@ synthesize (structured card — LLM reasons, never invents prices)
     END
 ```
 
+The Smart Shopping Agent is built as a **LangGraph-based multi-agent pipeline**, where each node is responsible for a single task such as intent classification, query parsing, product retrieval, validation, and response synthesis.
+
+<p align="center">
+  <img src="Graph%20Diagram.png"
+       alt="Smart Shopping Agent Architecture"
+       width="100%">
+</p>
+
+### Pipeline Overview
+
+1. **Message Classification** – Detects whether the user is chatting or shopping.
+2. **Intent Classification** – Identifies new searches vs follow-up questions.
+3. **Query Parsing** – Extracts product specifications and asks for missing details.
+4. **Product Search** – Retrieves live products using SerpAPI.
+5. **Deal Validation** – Scores each product based on user requirements.
+6. **Price Verification** – Detects suspicious discounts and pricing anomalies.
+7. **Response Synthesis** – Generates a structured recommendation card with reasoning.
+
+This modular workflow makes the system easy to extend, debug, and maintain while keeping each agent focused on a single responsibility.
+
+
 ---
 
 ## ✨ Features
