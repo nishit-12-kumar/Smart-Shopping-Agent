@@ -6,7 +6,18 @@ from src.shopping_agent.utils.exceptions import SerpAPIError
 
 
 class SerpApiClient:
+    """
+    Thin wrapper around the `serpapi` package's GoogleSearch client,
+    scoped specifically to the `google_shopping` engine.
+
+    Loads the API key from config and exposes a single method for fetching
+    and parsing product listings, raising SerpAPIError on any upstream
+    failure so callers (search_products_node) can distinguish a real API
+    problem from a genuine "no products found" result.
+    """
+
     def __init__(self):
+        """Initializes the client, loading the SerpAPI key from config."""
         self.api_key = SERPAPI_API_KEY
 
     def search_google_shopping(self, query: str) -> List[Dict[str, Any]]:
@@ -20,6 +31,23 @@ class SerpApiClient:
         user (a clear "search quota exhausted" message), instead of this
         client silently returning an empty/fake result set that looks like
         "no products matched" when the real problem is "the API is down".
+
+        Queries are geolocated to India (gl=in) for locally relevant
+        pricing, and results are capped at 5 to limit downstream LLM token
+        usage.
+
+        Args:
+            query (str): The search query string (e.g. "laptop under 60k").
+
+        Returns:
+            List[Dict[str, Any]]: Up to 5 parsed product dicts, each with
+            `title`, `price` (extracted numeric value), `link`, `source`,
+            `rating`, `reviews`, and `thumbnail`. Returns an empty list if
+            SerpAPI responds successfully but with no shopping results.
+
+        Raises:
+            SerpAPIError: If the connection to SerpAPI fails, or if SerpAPI
+                returns an explicit error in its response payload.
         """
         agent_logger.info(f"Initiating SerpAPI Google Shopping search for: '{query}'")
 

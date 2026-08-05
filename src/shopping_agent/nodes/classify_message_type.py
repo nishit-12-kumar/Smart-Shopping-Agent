@@ -17,16 +17,6 @@ def _extract_json(raw_text: str) -> dict:
 
 
 def classify_message_type_node(state: ShoppingState) -> ShoppingState:
-    """
-    Runs as the VERY FIRST node, before intent/follow-up classification.
-    Uses the LLM to decide whether the message is:
-      - CHITCHAT: greetings, thanks, small talk, meta questions ("what can you do")
-      - SHOPPING: contains any genuine product-buying intent
-
-    If CHITCHAT, the LLM also generates the direct reply right here, so the
-    graph can short-circuit straight to END without ever touching search/
-    validation/pricing nodes.
-    """
     agent_logger.info("Entering classify_message_type_node.")
 
     user_query = state.get("user_query", "")

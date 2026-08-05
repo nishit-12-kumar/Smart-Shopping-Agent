@@ -7,24 +7,29 @@ from src.shopping_agent.utils.logger import agent_logger
 
 # 1. Define the Strict Output Schema using Pydantic
 class ProductEvaluation(BaseModel):
+
+    # Structured LLM output for a single product's deal evaluation.
     confidence_score: int = Field(description="A score from 0 to 100 indicating how good of a deal this is.")
     reasoning: str = Field(description="A one-line explanation of why this score was given, considering price, specs, and reviews.")
 
 class DealValidationOutput(BaseModel):
+
+    # Structured LLM output wrapping a batch of per-product deal evaluations.
     evaluations: List[ProductEvaluation] = Field(description="List of evaluations matching the order of the input products.")
 
 
 def _flag_low_review_count(product: dict):
     rating = product.get("rating")
     reviews = product.get("reviews")
+
     if rating and reviews and rating >= 4.5 and reviews < 50:
         return f"⚠️ High rating ({rating}★) but only {reviews} reviews — insufficient data to fully trust this rating."
     return None
 
+
 def validate_deals_node(state: ShoppingState) -> ShoppingState:
-    """
-    Evaluates the raw products using Groq LLM and assigns a confidence score.
-    """
+
+    # 1. Evaluates the raw products using Groq LLM and assigns a confidence score.
     agent_logger.info("Entering validate_deals_node.")
     
     try:

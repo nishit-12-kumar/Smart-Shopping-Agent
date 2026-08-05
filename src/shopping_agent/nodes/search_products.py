@@ -8,24 +8,15 @@ from src.shopping_agent.utils.logger import agent_logger
 # instead of a generic "search failed" message.
 _QUOTA_INDICATORS = ("run out of searches", "exceeded", "quota", "usage limit")
 
-
 def _is_quota_error(message: str) -> bool:
     lowered = message.lower()
     return any(indicator in lowered for indicator in _QUOTA_INDICATORS)
 
 
 def search_products_node(state: ShoppingState) -> ShoppingState:
-    """
-    Executes the product search using the SerpApiClient.
-    """
     agent_logger.info("Entering search_products_node.")
     
     try:
-        # Prevent search if the previous node decided we need more clarification
-        if state.get("clarification_needed"):
-            agent_logger.info("Clarification needed. Skipping search.")
-            return state
-
         # Safely extract the search query
         search_params = state.get("search_params") or {}
         search_query = search_params.get("query")

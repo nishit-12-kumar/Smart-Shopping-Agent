@@ -26,10 +26,6 @@ def generate_spec_options(user_query: str) -> dict:
     try:
         llm = GroqClient().get_llm()
 
-        # NOTE: every literal { and } in the system message below is escaped
-        # as {{ and }} — otherwise ChatPromptTemplate tries to treat
-        # "Question text here?" as a template variable, which caused the
-        # KeyError you hit.
         prompt = ChatPromptTemplate.from_messages([
             ("system",
              "A user in India wants to buy something but hasn't given enough detail. List the "
@@ -52,6 +48,7 @@ def generate_spec_options(user_query: str) -> dict:
 
         agent_logger.info(f"RAW GROQ OUTPUT for '{user_query}': {result.content!r}")
 
+        # Converts JSON --> Python dictionary.
         parsed = _extract_json(result.content)
 
         spec_options = {
@@ -60,6 +57,7 @@ def generate_spec_options(user_query: str) -> dict:
             if isinstance(values, list) and values
         }
 
+        # In case the LLM returned a JSON object with no usable questions (e.g. all empty lists),
         if not spec_options:
             agent_logger.warning("Parsed JSON was empty after filtering. Using fallback.")
             return FALLBACK_SPEC_OPTIONS

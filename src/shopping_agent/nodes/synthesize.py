@@ -5,19 +5,20 @@ from src.shopping_agent.graph.state import ShoppingState
 from src.shopping_agent.services.groq_client import GroqClient
 from src.shopping_agent.utils.logger import agent_logger
 
-MAX_ALTERNATIVES = 2
+MAX_ALTERNATIVES = 3
 
 # --- Output schema: LLM only fills in REASONING, never prices/titles/IDs ---
 # This guarantees the card always shows real data — the LLM can't hallucinate
 # a price or product name since those are taken directly from validated_deals.
 
 class TopPickAnalysis(BaseModel):
+    # Structured LLM reasoning about the (code-selected) top-pick product.
     why_it_wins: str = Field(description="One punchy sentence on why this is the best match for the user's request.")
     specs_matched: List[str] = Field(description="2-4 short tags of specs/preferences this product satisfies, e.g. '5G', '128GB storage'.")
     specs_warning: Optional[str] = Field(default=None, description="One short tag for any spec NOT confirmed or slightly off, e.g. 'Brand not specified'. Null if nothing to flag.")
 
-
 class SynthesisOutput(BaseModel):
+    # Full structured LLM output for the synthesis step.
     top_pick_analysis: TopPickAnalysis
     alternative_trade_offs: List[str] = Field(description="One short trade-off sentence per alternative product, in the SAME ORDER the alternatives were given.")
     filtered_out_note: Optional[str] = Field(default=None, description="One short sentence noting how many other options were filtered out and why, e.g. '2 more options filtered out — low review count or price mismatch.' Null if there were no other options.")
@@ -27,6 +28,9 @@ class SynthesisOutput(BaseModel):
 
 
 def _build_synthesis_chain():
+    # Builds the LangChain prompt -> structured-output chain used to generate
+    # the LLM's reasoning fields (via SynthesisOutput).
+
     groq_client = GroqClient().get_llm()
     structured_llm = groq_client.with_structured_output(SynthesisOutput)
 
@@ -49,6 +53,7 @@ def _build_synthesis_chain():
 
 
 def _format_product_line(p: dict) -> str:
+    # Formats a single product dict into a compact one-line string for inclusion in the LLM prompt.
     line = f"{p.get('title')} | ₹{p.get('price')} | Confidence: {p.get('confidence_score')}/100"
     if p.get("rating"):
         line += f" | Rating: {p.get('rating')} ({p.get('reviews')} reviews)"
@@ -62,13 +67,6 @@ def synthesize_node(state: ShoppingState) -> ShoppingState:
     reasoning fields (why it wins, trade-offs, red flags, bottom line,
     follow-up chips). This guarantees the UI never shows a hallucinated
     price or product name — those always come straight from validated_deals.
-
-    NOTE: structured output (Pydantic schema via with_structured_output)
-    does not support token-by-token streaming — it returns the full object
-    at once via tool-calling under the hood. This node therefore uses
-    .invoke() instead of .stream(). The "Agent is reasoning..." status box
-    in app.py still shows live node-progress, so the UI doesn't feel frozen,
-    it just won't have a typewriter effect for this specific node anymore.
     """
     agent_logger.info("Entering synthesize_node.")
 
@@ -93,13 +91,17 @@ def synthesize_node(state: ShoppingState) -> ShoppingState:
         sorted_deals = sorted(deals, key=lambda d: d.get("confidence_score", 0), reverse=True)
         top_pick = sorted_deals[0]
         alternatives = sorted_deals[1:1 + MAX_ALTERNATIVES]
+
+        # Shows the remaining product after the top pick and alternatives, if any
         filtered_count = max(0, len(sorted_deals) - 1 - len(alternatives))
 
+        # Collected the suspicious products.
         red_flag_products = [d for d in sorted_deals if d.get("is_suspicious_pricing")]
         red_flag_data = "\n".join(
             f"- {d.get('title')}: {d.get('pricing_analysis', '')}" for d in red_flag_products
         ) or "None"
 
+        # Format the top pick and alternatives into compact lines for the LLM prompt 
         top_pick_text = _format_product_line(top_pick)
         alternatives_text = "\n".join(_format_product_line(a) for a in alternatives) or "None"
 
@@ -116,7 +118,7 @@ def synthesize_node(state: ShoppingState) -> ShoppingState:
 
         # Assemble the final structure: REAL product data + LLM reasoning
         structured = {
-
+            
             "top_pick": {
                 "title": top_pick.get("title"),
                 "price": top_pick.get("price"),

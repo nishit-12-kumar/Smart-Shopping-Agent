@@ -4,28 +4,8 @@ from src.shopping_agent.services.groq_client import GroqClient
 from src.shopping_agent.utils.logger import agent_logger
 
 def answer_followup_node(state: ShoppingState) -> ShoppingState:
-    """
-    Answers a follow-up question directly using products already in memory —
-    skips search/validate/price-check entirely, saving API calls and time.
-
-    NOTE ON STREAMING: uses chain.stream(...) instead of chain.invoke(...)
-    so the underlying LLM call runs in streaming mode. The live typewriter
-    effect itself is produced at the app.py level via LangGraph's
-    stream_mode=["updates", "messages"], which intercepts these same LLM
-    callbacks node-by-node — not by anything pushed manually from here.
-    """
     agent_logger.info("Entering answer_followup_node.")
 
-    # IMPORTANT: graph_state is a single dict that persists across the whole
-    # conversation. The last real search left `structured_recommendation`
-    # populated with the previous card's data, and nothing clears it
-    # automatically. app.py decides what to render with:
-    #   if structured and not clarification_needed: render the card
-    #   elif plain_recommendation: render this node's text answer
-    # Since `structured` was still truthy from the earlier turn, every
-    # follow-up answer generated here was being silently discarded in favor
-    # of re-rendering the stale card. Clearing it here is what lets app.py
-    # actually show the fresh answer below instead.
     state["structured_recommendation"] = None
 
     try:

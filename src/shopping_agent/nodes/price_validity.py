@@ -7,16 +7,16 @@ from src.shopping_agent.utils.logger import agent_logger
 
 # 1. Define Strict Output Schema
 class DiscountAnalysis(BaseModel):
+    # Structured LLM output for a single product's pricing analysis.
     is_suspicious: bool = Field(description="True if the claimed price or discount seems artificially inflated or unrealistic for the category, False otherwise.")
     analysis_reasoning: str = Field(description="A short explanation of why the price/discount is realistic or suspicious based on standard market norms.")
 
 class PriceValidityOutput(BaseModel):
+    # Structured LLM output wrapping a batch of per-product pricing analyses.
     analyses: List[DiscountAnalysis] = Field(description="List of analyses matching the order of the input products.")
 
 def price_validity_node(state: ShoppingState) -> ShoppingState:
-    """
-    Evaluates validated deals to detect fake or inflated discount patterns.
-    """
+    # Evaluates validated deals to detect fake or inflated discount patterns.
     agent_logger.info("Entering price_validity_node.")
     
     try:

@@ -17,10 +17,6 @@ def _extract_json(raw_text: str) -> dict:
 
 
 def classify_intent_node(state: ShoppingState) -> ShoppingState:
-    """
-    Runs BEFORE parse_query. Decides if the new message is a NEW search
-    or a FOLLOW_UP question about products already shown in the last turn.
-    """
     agent_logger.info("Entering classify_intent_node.")
 
     last_shown_deals = state.get("last_shown_deals", [])
@@ -39,6 +35,11 @@ def classify_intent_node(state: ShoppingState) -> ShoppingState:
         products_list = "\n".join(
             f"- {d.get('title')} (₹{d.get('price')})" for d in last_shown_deals
         )
+        """Product_list looks like this:
+        - Dell Inspiron (₹55000)
+        - HP Pavilion (₹60000)
+        - Lenovo IdeaPad (₹58000)
+        """
 
         prompt = ChatPromptTemplate.from_messages([
             ("system",
@@ -60,9 +61,21 @@ def classify_intent_node(state: ShoppingState) -> ShoppingState:
         parsed = _extract_json(result.content)
 
         state["intent"] = parsed.get("intent", "NEW")
-        state["search_params"] = state.get("search_params") or {}
-        state["search_params"]["referenced_product"] = parsed.get("referenced_product")
 
+        # Creates search_params if it doesn't exist.
+        state["search_params"] = state.get("search_params") or {}
+
+        state["search_params"]["referenced_product"] = parsed.get("referenced_product")
+        """
+        State looks like this after classification:
+        
+        state = {
+            "intent": "FOLLOW_UP",
+            "search_params": {
+                "referenced_product": "HP Pavilion"
+            }
+        }
+        """
         agent_logger.info(f"Classified intent: {state['intent']} | referenced: {parsed.get('referenced_product')}")
 
     except Exception as e:

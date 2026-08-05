@@ -2,11 +2,6 @@ from src.shopping_agent.graph.state import ShoppingState
 from src.shopping_agent.utils.logger import agent_logger
 
 def parse_query_node(state: ShoppingState) -> ShoppingState:
-    """
-    Decides whether the query has enough detail to search directly,
-    or needs clarification — works for ANY product, not just
-    hardcoded categories like laptop/AC.
-    """
     agent_logger.info(f"Entering parse_query_node with query: {state['user_query']}")
 
     try:
@@ -43,5 +38,3 @@ def parse_query_node(state: ShoppingState) -> ShoppingState:
         state["search_params"] = None
 
     return state
-
-

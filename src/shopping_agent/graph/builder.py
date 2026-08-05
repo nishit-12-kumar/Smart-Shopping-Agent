@@ -1,3 +1,12 @@
+"""
+LangGraph state machine builder for the Smart Shopping Negotiator.
+
+This module wires together all pipeline nodes (message classification,
+intent routing, query parsing, product search, deal validation, price
+sanity-checking, and synthesis) into a single compiled StateGraph that
+drives the shopping assistant's conversation flow.
+"""
+
 from langgraph.graph import StateGraph, END
 from src.shopping_agent.graph.state import ShoppingState
 
@@ -17,7 +26,25 @@ from src.shopping_agent.nodes.classify_message_type import classify_message_type
 from src.shopping_agent.utils.logger import agent_logger
 
 def build_graph():
-    """Compiles and returns the LangGraph state machine."""
+    """
+    Compiles and returns the LangGraph state machine for the shopping agent.
+
+    Graph flow:
+        classify_message_type
+            -> END                          (if chitchat)
+            -> classify_intent
+                -> answer_followup -> END    (if follow-up question)
+                -> parse_query
+                    -> END                   (if clarification needed)
+                    -> search_products
+                        -> validate_deals
+                            -> price_validity
+                                -> synthesize -> END
+
+    Returns:
+        CompiledGraph: A compiled LangGraph state machine ready to be
+        invoked or streamed against a ShoppingState.
+    """
     agent_logger.info("Compiling the LangGraph state machine.")
     
     builder = StateGraph(ShoppingState)
@@ -30,7 +57,7 @@ def build_graph():
     builder.add_node("parse_query", parse_query_node)
     builder.add_node("search_products", search_products_node)
     builder.add_node("validate_deals", validate_deals_node)
-    builder.add_node("price_validity", price_validity_node) # <-- Added node
+    builder.add_node("price_validity", price_validity_node)
     builder.add_node("synthesize", synthesize_node)
 
     # 2. Define the execution flow
@@ -72,4 +99,3 @@ def build_graph():
     builder.add_edge("synthesize", END)
 
     return builder.compile()
-
