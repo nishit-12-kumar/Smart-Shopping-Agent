@@ -798,16 +798,10 @@ def synthesize_node(state: ShoppingState) -> ShoppingState:
                 "price": alternative.get("price"),
                 "thumbnail": alternative.get("thumbnail"),
                 "link": alternative.get("link"),
-                "source": alternative.get("source"),
-                "confidence_score": alternative.get("confidence_score"),
                 "recommendation_score": alternative.get("recommendation_score"),
                 "rating": alternative.get("rating"),
                 "reviews": alternative.get("reviews"),
-                "pricing_risk_score": alternative.get("pricing_risk_score"),
-                "pricing_risk_level": alternative.get("pricing_risk_level"),
                 "is_suspicious_pricing": alternative.get("is_suspicious_pricing", False),
-                "compatibility": alternative.get("compatibility"),
-                "review_flag": alternative.get("review_flag"),
                 # Final sanitized plain-text LLM reasoning.
                 "trade_off": trade_off,
             })

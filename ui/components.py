@@ -29,67 +29,6 @@ def _esc(value) -> str:
     return _html.escape(str(value), quote=True)
 
 
-_HTML_TAG_RE = re.compile(
-    r"<\\s*/?\\s*[A-Za-z][^>]*>",
-    re.IGNORECASE,
-)
-
-_CODE_FENCE_RE = re.compile(
-    r"```(?:html|xml|markdown|md)?\\s*(.*?)```",
-    re.IGNORECASE | re.DOTALL,
-)
-
-_WHITESPACE_RE = re.compile(r"\\s+")
-
-
-def _plain_text(value, default: str = "") -> str:
-    """Return safe human-readable text from model/API output.
-
-    The LLM occasionally returns presentation markup such as
-    ``<p class="alt-tradeoff">...</p>`` even though the schema asks for a
-    plain sentence. We deliberately strip markup here as a final UI boundary.
-
-    HTML entities are decoded first so both raw and escaped markup are handled:
-        <p>text</p>
-        &lt;p&gt;text&lt;/p&gt;
-    """
-    if value is None:
-        return default
-
-    text = str(value).strip()
-    if not text:
-        return default
-
-    # Unwrap markdown/code fences before removing tags.
-    match = _CODE_FENCE_RE.fullmatch(text)
-    if match:
-        text = match.group(1).strip()
-    else:
-        text = _CODE_FENCE_RE.sub(r"\\1", text)
-
-    # Decode entities repeatedly so escaped tags are also recognized.
-    for _ in range(2):
-        decoded = _html.unescape(text)
-        if decoded == text:
-            break
-        text = decoded
-
-    # Remove HTML/XML tags, but preserve normal comparison text such as
-    # "8 < 10" because the regex requires a tag-like name after "<".
-    text = _HTML_TAG_RE.sub(" ", text)
-
-    # Remove common leftover markup wrappers that are not HTML tags.
-    text = text.replace("<!--", " ").replace("-->", " ")
-    text = _WHITESPACE_RE.sub(" ", text).strip()
-
-    return text or default
-
-
-def _ui_text(value, default: str = "") -> str:
-    """Plain-text cleanup followed by HTML escaping for UI rendering."""
-    return _esc(_plain_text(value, default))
-
-
 def _score_class(score, prefix: str) -> str:
     """Shared logic behind every colour-coded score pill."""
     try:
@@ -122,7 +61,7 @@ def _parse_reviews(value):
     """Parse review counts such as 1234, '1,234', or '1,234 reviews'."""
     if value is None:
         return None
-    match = re.search(r"\\d[\\d,]*", str(value))
+    match = re.search(r"\d[\d,]*", str(value))
     if not match:
         return None
     try:
@@ -175,7 +114,7 @@ def get_product_link(product: dict) -> str:
         except ValueError:
             pass
 
-    title = _plain_text(product.get("title"), "product")
+    title = str(product.get("title") or "product").strip()
     return f"https://www.google.com/search?q={quote_plus(title)}&tbm=shop"
 
 
@@ -261,7 +200,7 @@ def _render_top_pick(top: dict, last_shown_deals: list):
         for t in (top.get("specs_matched") or [])
     )
     if top.get("specs_warning"):
-        tags_html += f'<span class="tag-warn">⚠ {_ui_text(top["specs_warning"])}</span>'
+        tags_html += f'<span class="tag-warn">⚠ {_esc(top["specs_warning"])}</span>'
 
     price = top.get("price")
     price_display = f"₹{price:,.2f}" if isinstance(price, (int, float)) else (f"₹{_esc(price)}" if price else "Price unavailable")
@@ -282,7 +221,7 @@ def _render_top_pick(top: dict, last_shown_deals: list):
                 {f'<div style="margin-bottom:8px;">{rating_html}</div>' if rating_html else ''}
                 <p class="toppick-price">{price_display}</p>
                 <p class="toppick-store">via {_esc(top.get('source') or 'Unknown store')}</p>
-                <p class="toppick-desc">{_ui_text(top.get('why_it_wins', ''))}</p>
+                <p class="toppick-desc">{_esc(top.get('why_it_wins', ''))}</p>
             </div>
         </div>
     </div>
@@ -348,11 +287,10 @@ def _render_alternatives(alternatives: list, render_key: str):
                     else "N/A"
                 )
 
-            # Clean accidental HTML returned by the LLM.
-            trade_off = _plain_text(
-                alt.get("trade_off"),
-                "A different trade-off compared with the top pick.",
-            )
+            trade_off = str(
+                alt.get("trade_off")
+                or "A different trade-off compared with the top pick."
+            ).strip()
 
             suspicious = bool(alt.get("is_suspicious_pricing"))
 
@@ -423,7 +361,7 @@ def _render_why_best_match(top: dict):
     if top.get("specs_warning"):
         items_html += (
             f'<div class="checklist-item"><span class="checklist-icon-warn">⚠</span>'
-            f'<span>{_ui_text(top["specs_warning"])}</span></div>'
+            f'<span>{_esc(top["specs_warning"])}</span></div>'
         )
 
     reviews = _parse_reviews(top.get("reviews"))
@@ -473,7 +411,7 @@ def _render_pricing_trust(top: dict, last_shown_deals: list):
     reasons_html = ""
     if reasons:
         for r in reasons:
-            reasons_html += f'<div class="keyspec-row"><span>•</span><span>{_ui_text(r)}</span></div>'
+            reasons_html += f'<div class="keyspec-row"><span>•</span><span>{_esc(r)}</span></div>'
     else:
         reasons_html = '<div class="keyspec-row"><span>•</span><span>No pricing risk signals detected for this listing.</span></div>'
 
@@ -512,7 +450,7 @@ def _render_key_specs(top: dict):
     if top.get("specs_warning"):
         rows_html += (
             f'<div class="keyspec-row"><span class="checklist-icon-warn">⚠</span>'
-            f'<span>{_ui_text(top["specs_warning"])}</span></div>'
+            f'<span>{_esc(top["specs_warning"])}</span></div>'
         )
 
     if not rows_html:
@@ -552,7 +490,7 @@ def _render_red_flags(red_flags: list):
         level_label, level_color = RISK_LEVEL_STYLE.get(risk_key, ("Unknown", "var(--danger)"))
 
         reasons_html = "".join(
-            f'<div class="keyspec-row"><span>•</span><span>{_ui_text(r)}</span></div>' for r in reasons
+            f'<div class="keyspec-row"><span>•</span><span>{_esc(r)}</span></div>' for r in reasons
         )
 
         st.markdown(f"""
@@ -569,7 +507,7 @@ def _render_red_flags(red_flags: list):
 def _render_filtered_note(note: str):
     if not note:
         return
-    st.markdown(f'<div class="info-banner">ℹ️ {_ui_text(note)}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="info-banner">ℹ️ {_esc(note)}</div>', unsafe_allow_html=True)
 
 
 def _render_bottom_line(bottom_line: str):
@@ -578,7 +516,7 @@ def _render_bottom_line(bottom_line: str):
     st.markdown(f"""
     <div class="bottomline-box">
         <p class="bottomline-title">⭐ Bottom Line</p>
-        <p class="bottomline-text">{_ui_text(bottom_line)}</p>
+        <p class="bottomline-text">{_esc(bottom_line)}</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -586,7 +524,7 @@ def _render_bottom_line(bottom_line: str):
 def _render_follow_up_chips(suggestions: list, render_key: str):
     clean_suggestions = []
     for suggestion in suggestions or []:
-        text = _plain_text(suggestion)
+        text = str(suggestion or "").strip()
         if text and text not in clean_suggestions:
             clean_suggestions.append(text)
 
@@ -642,5 +580,3 @@ def render_recommendation_card(structured: dict, last_shown_deals: list = None, 
     _render_red_flags(structured.get("red_flags") or [])
     _render_bottom_line(structured.get("bottom_line"))
     _render_follow_up_chips(structured.get("follow_up_suggestions") or [], render_key)
-
-

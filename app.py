@@ -182,6 +182,22 @@ def run_agent_pipeline(user_input_query):
             text_placeholder.empty()
 
 
+def submit_user_message(display_text: str, agent_query: str = None):
+    """
+    Append a user turn, render it immediately (so the UI feels responsive
+    while the agent is still thinking), run the pipeline, then rerun.
+
+    Previously the chat box, the follow-up chips, and the spec-configuration
+    form each had their own copy of this same four-step sequence.
+    """
+    st.session_state.messages.append({"role": "user", "content": display_text})
+    with st.chat_message("user"):
+        st.markdown(display_text)
+
+    run_agent_pipeline(agent_query if agent_query is not None else display_text)
+    st.rerun()
+
+
 # ---------------------------------------------------------
 # Dynamic Configuration Form
 # ---------------------------------------------------------
@@ -233,17 +249,14 @@ if st.session_state.graph_state.get("clarification_needed"):
             if chosen_specs else st.session_state.graph_state['user_query']
         )
 
-        st.session_state.messages.append({
-            "role": "user",
-            "content": f"Applied specs: {spec_string if chosen_specs else 'No preference (Skipped all)'}"
-        })
-
         st.session_state.graph_state["clarification_needed"] = False
         st.session_state.pop("dynamic_spec_fields", None)
         st.session_state.pop("spec_query_cache", None)
 
-        run_agent_pipeline(refined_query)
-        st.rerun()
+        submit_user_message(
+            display_text=f"Applied specs: {spec_string if chosen_specs else 'No preference (Skipped all)'}",
+            agent_query=refined_query,
+        )
 
 # ---------------------------------------------------------
 # Handle a follow-up chip click (from render_recommendation_card)
@@ -251,25 +264,10 @@ if st.session_state.graph_state.get("clarification_needed"):
 if st.session_state.pending_chip_prompt:
     chip_prompt = st.session_state.pending_chip_prompt
     st.session_state.pending_chip_prompt = None
-
-    st.session_state.messages.append({"role": "user", "content": chip_prompt})
-    with st.chat_message("user"):
-        st.markdown(chip_prompt)
-
-    run_agent_pipeline(chip_prompt)
-    st.rerun()
+    submit_user_message(chip_prompt)
 
 # ---------------------------------------------------------
 # Regular text chat box input
 # ---------------------------------------------------------
 if prompt := st.chat_input("Ask for a product or provide more details...", disabled=st.session_state.graph_state.get("clarification_needed", False)):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    run_agent_pipeline(prompt)
-    st.rerun()
-
-
-
-
+    submit_user_message(prompt)

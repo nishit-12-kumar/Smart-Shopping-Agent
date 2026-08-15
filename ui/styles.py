@@ -105,7 +105,6 @@ CHAT_CSS = """
     .tag-row { display:flex; flex-wrap:wrap; gap:6px; margin-bottom: 10px; }
     .tag-good { background: var(--success-soft); color: var(--success); font-size:11px; font-weight:600; padding:4px 9px; border-radius:6px; }
     .tag-warn { background: var(--accent-gold-soft); color: var(--accent-gold); font-size:11px; font-weight:600; padding:4px 9px; border-radius:6px; }
-    .tag-bad  { background: var(--danger-soft); color: var(--danger); font-size:11px; font-weight:600; padding:4px 9px; border-radius:6px; }
 
     .toppick-price { font-family: var(--font-display); font-size:26px; font-weight:800; color:var(--text-primary); margin: 6px 0 0; }
     .toppick-store { font-size:12px; color:var(--text-secondary); margin: 0 0 10px; }
@@ -127,25 +126,7 @@ CHAT_CSS = """
     .score-pill-mid  { background: var(--accent-gold-soft); color: var(--accent-gold); }
     .score-pill-low  { background: var(--danger-soft); color: var(--danger); }
 
-    /* ---------------- Score formula breakdown (expander) ---------------- */
-    .formula-table { width:100%; border-collapse:collapse; margin-top:4px; }
-    .formula-table th { font-size:10.5px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.04em; text-align:right; padding:6px 8px; border-bottom:1px solid var(--border-subtle); font-weight:600; }
-    .formula-table th:first-child { text-align:left; }
-    .formula-table td { font-size:12.5px; color:var(--text-primary); text-align:right; padding:7px 8px; border-bottom:1px solid var(--border-subtle); }
-    .formula-table td:first-child { text-align:left; color:#cfd3da; }
-    .formula-table tr:last-child td { border-bottom:none; }
-    .formula-total-row td { font-weight:800; color:var(--accent-gold); border-top:1.5px solid var(--accent-gold); padding-top:9px; }
-    .formula-note { font-size:11px; color:var(--text-secondary); margin-top:8px; line-height:1.5; }
-    .formula-expr { font-family: 'Courier New', monospace; font-size:11.5px; color:#cfd3da; background:var(--bg-page); border:1px solid var(--border-subtle); border-radius:8px; padding:10px 12px; margin-top:10px; line-height:1.7; overflow-x:auto; white-space:pre; }
-
-    /* ---------------- Meta strip below top pick ---------------- */
-    .meta-strip { display:flex; flex-wrap:wrap; gap: 22px; padding: 12px 4px 4px; border-top: 1px solid var(--border-subtle); margin-top:14px; }
-    .meta-item { font-size:12px; }
-    .meta-item .meta-k { color: var(--text-secondary); display:block; margin-bottom:2px; }
-    .meta-item .meta-v { color: var(--text-primary); font-weight:600; }
-
     /* ---------------- Alternatives ---------------- */
-    .alt-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 4px; }
     .alt-card { background: var(--bg-card-alt); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 12px; display:flex; flex-direction:column; gap:8px; }
     .alt-card-suspicious { border-color: var(--danger); }
     .alt-imgwrap { width:100%; height:120px; border-radius:8px; overflow:hidden; background:#0d0f14; display:flex; align-items:center; justify-content:center; border:1px solid var(--border-subtle); }
@@ -161,7 +142,6 @@ CHAT_CSS = """
     .info-banner { background: var(--info-soft); border-left:3px solid var(--info); color:#cfe4ff; font-size:12.5px; padding:8px 12px; border-radius:6px; margin: 10px 0; }
 
     /* ---------------- Bottom info row (3 cards) ---------------- */
-    .info-card-row { display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 6px 0 4px; }
     .info-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px; }
     .info-card-title { font-family: var(--font-display); font-size:12.5px; font-weight:700; color:var(--text-primary); text-transform:uppercase; letter-spacing:0.04em; margin: 0 0 12px; display:flex; align-items:center; gap:6px; }
 
@@ -177,12 +157,6 @@ CHAT_CSS = """
     .trust-ring-max { font-size:9px; color:var(--text-secondary); }
     .trust-risk-label { font-size:13px; font-weight:700; font-family: var(--font-display); }
 
-    .spec-list-row { display:flex; justify-content:space-between; font-size:12px; padding:5px 0; border-top:1px solid var(--border-subtle); }
-    .spec-list-row:first-of-type { border-top:none; }
-    .spec-list-k { color: var(--text-secondary); }
-    .spec-list-v { color: var(--text-primary); font-weight:600; text-align:right; }
-    .info-card-caption { font-size:11px; color:var(--text-secondary); line-height:1.5; margin-top:10px; }
-
     .keyspec-row { display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:#cfd3da; margin-bottom:9px; line-height:1.5; }
     .keyspec-row:last-child { margin-bottom:0; }
 
@@ -193,13 +167,6 @@ CHAT_CSS = """
 
     /* ---------------- Ask-next section ---------------- */
     .ask-next-title { font-size:12.5px; color:var(--text-secondary); display:flex; align-items:center; gap:6px; margin: 4px 0 8px; }
-
-    /* ---------------- Footer trust strip ---------------- */
-    .trust-footer { display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border-subtle); }
-    .trust-footer-item { display:flex; align-items:flex-start; gap:8px; }
-    .trust-footer-icon { font-size:16px; }
-    .trust-footer-title { font-size:11.5px; font-weight:700; color:var(--text-primary); margin:0; }
-    .trust-footer-sub { font-size:10.5px; color:var(--text-secondary); margin:0; line-height:1.4; }
 
     /* ---------------- Star rating ---------------- */
     .star-rating { color:#f0b94d; font-size:14px; letter-spacing:1px; }
@@ -225,7 +192,5 @@ CHAT_CSS = """
     }
 </style>
 """
-
-
 
 

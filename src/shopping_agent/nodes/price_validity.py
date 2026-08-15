@@ -4,11 +4,7 @@ import statistics
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
-from pydantic import BaseModel, Field
-from langchain_core.prompts import ChatPromptTemplate
-
 from src.shopping_agent.graph.state import ShoppingState
-from src.shopping_agent.services.groq_client import get_groq_llm
 from src.shopping_agent.utils.logger import agent_logger
 
 
@@ -603,107 +599,6 @@ def get_risk_level(score: int) -> str:
 
 
 # ============================================================================
-# LLM EXPLANATION
-# ============================================================================
-
-class PricingExplanation(BaseModel):
-    """
-    LLM is ONLY responsible for converting deterministic findings
-    into a short shopper-friendly explanation.
-    """
-
-    explanation: str = Field(
-        description=(
-            "One or two concise sentences explaining the pricing concern. "
-            "Use ONLY the supplied rule findings and risk score. "
-            "Do not invent additional facts."
-        )
-    )
-
-
-class PricingExplanationOutput(BaseModel):
-    explanations: List[PricingExplanation] = Field(
-        description=(
-            "One explanation for each flagged product, in exactly "
-            "the same order as the input products."
-        )
-    )
-
-
-def _explain_flagged_products(
-    flagged: List[Dict[str, Any]],
-    groq_client
-) -> None:
-    """
-    Uses the LLM only for natural-language explanation.
-
-    The LLM NEVER decides whether a product is suspicious.
-    """
-
-    structured_llm = groq_client.with_structured_output(
-        PricingExplanationOutput
-    )
-
-    prompt = ChatPromptTemplate.from_messages([
-        (
-            "system",
-            """
-You are a shopping assistant explaining pricing-risk signals.
-
-The pricing risk score and rule findings have ALREADY been
-calculated deterministically by Python.
-
-Your job is ONLY to convert those findings into a short,
-clear explanation for the shopper.
-
-STRICT RULES:
-- Do not change the risk level.
-- Do not invent additional reasons.
-- Do not claim that a product is definitely fraudulent or fake.
-- Use cautious language such as "worth checking", "unusual",
-  or "pricing may warrant verification".
-- Do not invent prices, specifications, sellers, or product facts.
-- Return exactly one explanation for each product.
-- Keep each explanation to 1-2 sentences.
-            """,
-        ),
-        (
-            "human",
-            """
-Explain the pricing-risk findings for these products:
-
-{products}
-            """,
-        ),
-    ])
-
-    products_text = "\n\n".join(
-        (
-            f"Product: {product.get('title')}\n"
-            f"Price risk score: {product.get('pricing_risk_score')}/100\n"
-            f"Risk level: {product.get('pricing_risk_level')}\n"
-            f"Findings: "
-            f"{'; '.join(product.get('pricing_risk_reasons', []))}"
-        )
-        for product in flagged
-    )
-
-    chain = prompt | structured_llm
-
-    result = chain.invoke({
-        "products": products_text
-    })
-
-    # Only update products for which the LLM actually returned an explanation.
-    for product, explanation in zip(
-        flagged,
-        result.explanations
-    ):
-        if explanation.explanation:
-            product["pricing_analysis"] = explanation.explanation
-
-
-# ============================================================================
 # MAIN NODE
 # ============================================================================
 
@@ -745,8 +640,6 @@ def price_validity_node(state: ShoppingState) -> ShoppingState:
 
         query = state.get("user_query", "")
 
-        flagged: List[Dict[str, Any]] = []
-
         # ================================================================
         # Product matching + peer groups + peer stats — computed ONCE
         # for the whole batch, not once per product.
@@ -764,6 +657,8 @@ def price_validity_node(state: ShoppingState) -> ShoppingState:
         # Calculate pricing risk for every product
         # ================================================================
 
+        flagged_count = 0
+
         for idx, product in enumerate(deals):
 
             risk_score, reasons = calculate_price_risk(
@@ -772,61 +667,18 @@ def price_validity_node(state: ShoppingState) -> ShoppingState:
                 peer_stats=peer_stats_by_index.get(idx),
             )
 
-            risk_level = get_risk_level(risk_score)
-
             product["pricing_risk_score"] = risk_score
-            product["pricing_risk_level"] = risk_level
+            product["pricing_risk_level"] = get_risk_level(risk_score)
             product["pricing_risk_reasons"] = reasons
+            product["is_suspicious_pricing"] = risk_score >= MEDIUM_RISK_THRESHOLD
 
-            # Keep this field for compatibility with your existing
-            # synthesize_node.
-            product["is_suspicious_pricing"] = (
-                risk_score >= MEDIUM_RISK_THRESHOLD
-            )
-
-            # Deterministic fallback explanation.
             if reasons:
-                product["pricing_analysis"] = (
-                    "; ".join(reasons)
-                )
-
-                flagged.append(product)
-
-            else:
-                product["pricing_analysis"] = (
-                    "No significant pricing red flags detected."
-                )
+                flagged_count += 1
 
         agent_logger.info(
             f"Pricing risk calculated for {len(deals)} products. "
-            f"{len(flagged)} products have pricing-risk signals."
+            f"{flagged_count} products have pricing-risk signals."
         )
-
-        # ================================================================
-        # LLM explanation
-        # ================================================================
-
-        if flagged:
-
-            try:
-
-                groq_client = get_groq_llm()
-
-                _explain_flagged_products(
-                    flagged,
-                    groq_client
-                )
-
-            except Exception as e:
-
-                # IMPORTANT:
-                # Pricing decisions have already been made by Python.
-                # If the LLM fails, the pipeline still works.
-                agent_logger.error(
-                    "LLM pricing explanation failed. "
-                    f"Using deterministic explanations instead: {str(e)}",
-                    exc_info=True,
-                )
 
         # ================================================================
         # Save results
@@ -862,8 +714,5 @@ def price_validity_node(state: ShoppingState) -> ShoppingState:
             deal["pricing_risk_level"] = "UNKNOWN"
             deal["pricing_risk_reasons"] = []
             deal["is_suspicious_pricing"] = False
-            deal["pricing_analysis"] = (
-                "Pricing analysis unavailable due to a system error."
-            )
 
     return state
