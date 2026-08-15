@@ -1,156 +1,1237 @@
 # Smart Shopping Agent — Engineering Decisions & Trade-offs
 
-This document records the key engineering decisions made during development,
-the reasoning behind each choice, and what would change in a production system.
-This is the kind of thinking that separates a demo from a real product.
+This document records the main engineering decisions behind the Smart Shopping Agent, why each approach was chosen, the trade-offs involved, and the areas that would need to evolve for a production deployment.
+
+The system is designed around a simple principle:
+
+> **Use LLMs for language understanding and explanation, and deterministic code for data integrity and product decisions.**
 
 ---
 
-## 1. Why LangGraph instead of a simple chain?
+## 1. Why LangGraph for orchestration?
 
-**Decision:** Use LangGraph as the orchestration layer instead of a linear LangChain chain.
+### Decision
 
-**Reasoning:**
-A linear chain (A → B → C → always) can't handle the conditional flows this system needs: chitchat vs shopping, follow-up vs new search, clarification vs direct search. LangGraph's conditional edges let each node inspect the current state and route to different next nodes — this is what makes the system genuinely "agentic" rather than just a sophisticated prompt wrapper.
+Use **LangGraph** as the orchestration layer instead of implementing the entire workflow as one large function or a simple linear chain.
 
-**Trade-off:** LangGraph adds complexity (state management, node definitions, edge routing) that a simple chain doesn't need. Worth it here because the branching logic is real and not trivial to fake with if/else in a single function.
+### Reasoning
 
-**Production note:** In production, LangGraph's `interrupt()` mechanism would be used for the clarification step (proper human-in-the-loop pause) instead of routing to END and relying on the Streamlit UI to resume.
+The shopping workflow is inherently conditional.
 
----
+Different user messages require different paths:
 
-## 2. Why Groq instead of OpenAI?
+```text
+Chitchat
+   ↓
+Direct response
 
-**Decision:** Use Groq (Llama 3.3 70B) as the LLM provider.
+Shopping
+   ↓
+New search / Follow-up
 
-**Reasoning:**
-- Free tier with generous limits — important for a portfolio project that may be demoed repeatedly
-- Inference speed is significantly faster than OpenAI's API (Groq uses custom hardware accelerators), which matters for live demos where waiting 10 seconds for a response looks bad
-- Llama 3.3 70B is capable enough for all tasks in this pipeline — classification, structured output, reasoning
+New search
+   ↓
+Enough information / Clarification required
+```
 
-**Trade-off:** Groq's free tier has rate limits. For heavy usage or production, switching to OpenAI/Anthropic would be straightforward since LangChain abstracts the provider — just change the client import and model name.
+After product retrieval, additional stages also need to execute in a defined order:
 
-**Production note:** The `GroqClient` class is already isolated in `services/groq_client.py`, so swapping providers requires changing only one file.
+```text
+Search
+  ↓
+Validation
+  ↓
+Pricing analysis
+  ↓
+Recommendation synthesis
+```
 
----
+LangGraph provides:
 
-## 3. Why SerpAPI instead of scraping?
+- Explicit nodes
+- Shared state
+- Conditional routing
+- Clear execution flow
+- Easier debugging
+- Natural support for multi-turn agent workflows
 
-**Decision:** Use SerpAPI's `google_shopping` engine instead of scraping Amazon/Flipkart directly.
+### Trade-off
 
-**Reasoning:**
-- Amazon and Flipkart have aggressive anti-scraping measures (CAPTCHAs, IP blocks, legal ToS restrictions)
-- Scraping breaks frequently when sites update their HTML structure
-- SerpAPI returns clean, structured JSON — no parsing fragility, no browser automation needed
-- Already handles geolocation (`gl=in` for India) and returns price, rating, review count, thumbnail, and source in one call
+LangGraph introduces additional concepts:
 
-**Trade-off:** SerpAPI's free tier is limited to 100 searches/month. For a portfolio demo this is fine; for production, either a paid SerpAPI plan or a direct Flipkart/Amazon API integration would be needed.
+- State schemas
+- Nodes
+- Edges
+- Routing functions
+- Graph compilation
 
-**Production note:** The `SerpApiClient` class is isolated in `services/serpapi_client.py`. Switching data sources only requires modifying this one file — all downstream nodes consume the same product dict schema.
+For a very small chatbot this would be unnecessary complexity. For this project, the branching workflow makes the complexity worthwhile.
 
----
+### Production direction
 
-## 4. Why structured Pydantic output for synthesis — and why not for everything?
-
-**Decision:** Use `with_structured_output()` (Pydantic schema) in `validate_deals`, `price_validity`, and `synthesize`, but not in `classify_message_type`, `classify_intent`, or `answer_followup`.
-
-**Reasoning:**
-Pydantic structured output guarantees the LLM returns a typed, predictable object instead of freeform text that needs regex parsing. This is critical for nodes that produce data used downstream in logic (confidence scores, suspicious flags, recommendation fields).
-
-For classification nodes, a simple JSON string parsed with `re.search(r"\{.*\}", ...)` is sufficient and avoids the overhead of tool-calling (which structured output uses under the hood). For `answer_followup`, freeform prose is the right output format — it's meant to feel conversational, not structured.
-
-**Trade-off:** Structured output is incompatible with token-by-token streaming (tool-calling returns the full object at once). This is why `synthesize` lost the typewriter effect — a deliberate trade-off: data reliability over visual polish for the most important node.
-
----
-
-## 5. Why are top pick and alternatives selected in Python, not by the LLM?
-
-**Decision:** `synthesize_node` sorts products by `confidence_score` in Python code to select the top pick and alternatives, then asks the LLM only for the reasoning text.
-
-**Reasoning:**
-LLMs can hallucinate. If we ask the LLM "which of these is best?", there's a non-zero chance it invents a price, misattributes a spec, or picks a product that doesn't match the data. By selecting products deterministically in code and asking the LLM only for qualitative reasoning (why it wins, trade-offs, bottom line), we guarantee:
-- Prices shown to the user always come from real SerpAPI data
-- Product titles always come from real SerpAPI data
-- The LLM can only affect the text reasoning, not the factual claims
-
-**Trade-off:** Purely confidence-score-based sorting doesn't capture every nuance a human expert might consider. But it's reliable, explainable, and safe.
+A production version could use LangGraph's interruption/checkpointing capabilities more extensively for long-running human-in-the-loop workflows and persistent conversations.
 
 ---
 
-## 6. Why does the clarification form use a separate `generate_spec_options()` call instead of a hardcoded form?
+# 2. Why Groq + Llama 3.3 70B?
 
-**Decision:** The clarification form fields and dropdown options are generated dynamically by Groq per product category, instead of a hardcoded dictionary per category (laptop, AC, phone, etc.).
+### Decision
 
-**Reasoning:**
-A hardcoded dictionary only covers categories we anticipated. If a user searches for "blender", "gaming chair", "running shoes", or "air purifier", a static dictionary would either show a generic fallback form or nothing useful. The LLM-generated form works for literally any product because it reasons about what specs matter for that specific category.
+Use **Groq with Llama 3.3 70B** for the LLM layer.
 
-**Trade-off:** One extra Groq API call per clarification round. Mitigated by caching the generated fields in `st.session_state` so the same product category doesn't trigger a new call on every Streamlit rerun.
+### Reasoning
+
+The project needs an LLM for several language-heavy tasks:
+
+- Message classification
+- Follow-up intent detection
+- Product-fit reasoning
+- Recommendation explanations
+- Follow-up answers
+- Dynamic specification generation
+
+Groq is particularly useful for this application because response latency matters in an interactive shopping interface.
+
+Fast inference improves the experience when the user is waiting for:
+
+```text
+classification
+      ↓
+validation
+      ↓
+reasoning
+      ↓
+final response
+```
+
+Llama 3.3 70B provides sufficient reasoning capability for these tasks while remaining practical for a portfolio project.
+
+### Trade-off
+
+The application remains dependent on:
+
+- API availability
+- Rate limits
+- Model availability
+- External inference costs at scale
+
+### Architectural advantage
+
+The LLM integration is isolated in the service layer, so the rest of the graph does not need to know the details of the provider.
 
 ---
 
-## 7. Why is there a multi-stage classification (chitchat → intent → parse) instead of one big classifier?
+# 3. Why SerpAPI instead of directly scraping retailers?
 
-**Decision:** Three separate classification nodes each do one job, rather than a single node that handles all cases.
+### Decision
 
-**Reasoning:**
-Single Responsibility Principle applied to LLM nodes. Each node has a narrow, well-defined classification task:
-- `classify_message_type`: "Is this even a shopping message?"
-- `classify_intent`: "Is this a follow-up or new search?" (only runs if shopping intent confirmed)
-- `parse_query`: "Do we have enough specs?" (only runs if new search confirmed)
+Use **SerpAPI Google Shopping** for live product retrieval.
 
-Combining all three into one prompt would make the prompt complex, harder to debug (which classification failed?), and harder to improve independently. Keeping them separate means we can tune the chitchat classifier without touching the follow-up detection logic.
+### Reasoning
 
-**Trade-off:** Three LLM calls instead of one for the routing layer. In practice, chitchat and follow-up paths terminate early, so most real shopping sessions only pay for one extra classification call (classify_message_type) before hitting the existing nodes.
+Direct scraping of retailer websites introduces several problems:
+
+- HTML structure changes
+- Anti-bot systems
+- CAPTCHAs
+- IP restrictions
+- Browser automation requirements
+- Fragile parsing logic
+- Potential terms-of-service concerns
+
+SerpAPI provides structured shopping results that can be consumed by the application without maintaining retailer-specific scraping logic.
+
+The system can receive information such as:
+
+```text
+Product title
+Price
+Source
+Rating
+Review count
+Thumbnail
+Product link
+```
+
+### Architectural benefit
+
+The product-search integration is isolated behind a service client.
+
+Conceptually:
+
+```text
+SerpAPI
+   ↓
+serpapi_client
+   ↓
+Normalized product data
+   ↓
+All downstream nodes
+```
+
+This means downstream recommendation logic does not need to know how the product was retrieved.
+
+### Trade-off
+
+SerpAPI introduces:
+
+- Search quotas
+- API costs at scale
+- Dependency on an external service
+
+### Production direction
+
+A production system could use:
+
+- Paid SerpAPI
+- Retailer APIs
+- Multiple product-data providers
+- A caching layer
+- Retry and circuit-breaker mechanisms
 
 ---
 
-## 8. Why use per-conversation log files instead of one global log?
+# 4. Why use structured Pydantic output?
 
-**Decision:** Each conversation session gets its own timestamped log file (e.g., `conversation_2026-06-29_11-05-12_a91f3e2c.log`).
+### Decision
 
-**Reasoning:**
-A single growing log file makes debugging hard — finding the relevant lines for one conversation means scrolling through interleaved output from multiple sessions. Per-conversation files let you open the log for "the session where the AC search broke" directly, without filtering.
+Use **Pydantic structured outputs** for LLM tasks where the result becomes application data.
 
-**Trade-off:** Many small files instead of one big one. For a demo/portfolio project, this is fine. For a multi-user production system, a proper logging service (Datadog, CloudWatch, structured JSON logs) would be used instead.
+### Reasoning
+
+Several LLM responses are not merely text. They become fields consumed by downstream Python code.
+
+For example:
+
+```text
+confidence_score
+pricing flags
+recommendation reasoning
+specification matches
+follow-up suggestions
+```
+
+A structured schema makes the boundary between the LLM and application logic explicit.
+
+Instead of:
+
+```text
+LLM → arbitrary paragraph → regex → application
+```
+
+the system can use:
+
+```text
+LLM
+ ↓
+Structured schema
+ ↓
+Validated Python object
+ ↓
+Application logic
+```
+
+This improves:
+
+- Type safety
+- Predictability
+- Error detection
+- Maintainability
+
+### Trade-off
+
+Structured output is less suitable when the desired result is conversational prose or when token-by-token streaming is important.
+
+The project therefore uses structured output selectively rather than forcing every LLM interaction into the same format.
 
 ---
 
-## 9. What would change in production?
+# 5. Why is recommendation selection deterministic?
 
-| Current (demo) | Production equivalent |
+### Decision
+
+Do **not** ask the LLM to decide which product is the final Top Pick.
+
+The system calculates recommendation scores in Python and uses those scores to select the Top Pick and alternatives.
+
+### Reasoning
+
+An LLM can generate convincing reasoning while still making factual mistakes.
+
+If the LLM were responsible for the final product selection, it could potentially:
+
+- Choose the wrong product
+- Misread a specification
+- Prefer a product for an unsupported reason
+- Accidentally reproduce an incorrect price
+- Change its decision between otherwise identical requests
+
+Instead:
+
+```text
+Retrieved Products
+       ↓
+Deterministic scoring
+       ↓
+Ranked products
+       ↓
+Top Pick + Alternatives
+       ↓
+LLM explanation
+```
+
+The LLM explains the decision; deterministic code makes the decision.
+
+### Recommendation weighting
+
+The current scoring system uses:
+
+| Factor | Weight |
+|---|---:|
+| Requirement Match | 50% |
+| Rating | 15% |
+| Reviews | 10% |
+| Price Value | 10% |
+| Pricing Trust | 15% |
+
+### Benefit
+
+The ranking becomes:
+
+- Reproducible
+- Inspectable
+- Easier to debug
+- Less vulnerable to LLM hallucination
+
+### Trade-off
+
+A fixed scoring formula cannot perfectly model every human purchasing preference.
+
+For example, two users may value:
+
+```text
+lowest price
+```
+
+and
+
+```text
+best long-term reliability
+```
+
+very differently.
+
+A future version could allow personalized weighting without giving up deterministic scoring.
+
+---
+
+# 6. Why separate pricing-risk analysis from recommendation scoring?
+
+### Decision
+
+Pricing trust is treated as its own analytical component rather than simply sorting products by discount percentage.
+
+### Reasoning
+
+A displayed discount does not necessarily represent a good deal.
+
+For example:
+
+```text
+MRP: ₹1,00,000
+Selling Price: ₹55,000
+```
+
+looks attractive, but the displayed MRP may not represent the normal market price.
+
+The system therefore considers multiple signals.
+
+Conceptually:
+
+```text
+Discount
+   +
+Current/MRP relationship
+   +
+Peer-product pricing
+   +
+Outlier behavior
+   +
+Rating/review evidence
+   ↓
+Pricing Risk
+```
+
+### Peer-price analysis
+
+Similar products can be grouped and compared using robust statistics such as:
+
+- Median
+- MAD
+- Modified z-score
+
+This reduces sensitivity to extreme listings.
+
+### Trade-off
+
+This is still an inference system, not a true historical price tracker.
+
+Without historical price data, the system cannot prove that an original price was artificially inflated.
+
+Therefore, pricing analysis is treated as a **risk signal**, not a definitive fraud verdict.
+
+---
+
+# 7. Why use a weighted recommendation score instead of cheapest-price sorting?
+
+### Decision
+
+Rank products using multiple signals instead of simply selecting the lowest price.
+
+### Reasoning
+
+The cheapest product is not necessarily the best product.
+
+Consider:
+
+```text
+Product A
+₹55,000
+Rating: 3.7
+Few reviews
+Weak requirement match
+
+Product B
+₹60,000
+Rating: 4.5
+Thousands of reviews
+Excellent requirement match
+```
+
+A pure price sort would select Product A.
+
+The recommendation engine instead considers:
+
+```text
+Requirement Match
+Rating
+Reviews
+Price Value
+Pricing Trust
+```
+
+This better represents the actual question:
+
+> "Which product is the best fit for this user?"
+
+rather than:
+
+> "Which product is cheapest?"
+
+---
+
+# 8. Why dynamic clarification instead of hardcoded product forms?
+
+### Decision
+
+Generate clarification questions dynamically instead of maintaining a large hardcoded form for every product category.
+
+### Reasoning
+
+A static implementation might look like:
+
+```text
+Laptop → RAM, CPU, Storage
+Phone  → Storage, Camera, Battery
+AC     → Tonnage, Room Size
+Shoes  → Size, Type
+```
+
+This works only for categories explicitly anticipated by the developer.
+
+A shopping assistant should be able to handle products that were never hardcoded.
+
+The dynamic approach allows the LLM to determine which specifications are useful for a category.
+
+### Flow
+
+```text
+User Query
+    ↓
+Missing information detected
+    ↓
+Generate category-specific options
+    ↓
+Streamlit form
+    ↓
+User selections
+    ↓
+Refined query
+    ↓
+Product search
+```
+
+### Trade-off
+
+Dynamic generation adds an additional LLM call.
+
+The application can mitigate unnecessary repeated calls by keeping generated options in Streamlit session state during the current interaction.
+
+---
+
+# 9. Why multiple routing stages instead of one large classifier?
+
+### Decision
+
+Use separate stages for:
+
+```text
+classify_message_type
+        ↓
+classify_intent
+        ↓
+parse_query
+```
+
+rather than one large classifier.
+
+### Reasoning
+
+Each stage has one responsibility.
+
+### `classify_message_type`
+
+Answers:
+
+> Is this message a shopping request or normal conversation?
+
+### `classify_intent`
+
+Answers:
+
+> Is this a new search or a follow-up about previously displayed products?
+
+### `parse_query`
+
+Answers:
+
+> Does this new search contain enough information to search effectively?
+
+This follows the **Single Responsibility Principle**.
+
+### Benefits
+
+If a classification problem occurs, it is easier to determine:
+
+```text
+Which stage failed?
+```
+
+Each prompt can also be improved independently.
+
+### Trade-off
+
+Multiple stages can introduce additional latency and LLM calls.
+
+However, routing allows the system to terminate early:
+
+```text
+Chitchat
+   ↓
+END
+```
+
+and:
+
+```text
+Follow-up
+   ↓
+answer_followup
+   ↓
+END
+```
+
+So the entire shopping pipeline is not executed for every message.
+
+---
+
+# 10. Why answer follow-ups from memory instead of searching again?
+
+### Decision
+
+Follow-up questions about recently displayed products use the stored conversation/product state instead of automatically performing another product search.
+
+### Reasoning
+
+Suppose the assistant has already shown:
+
+```text
+s1p1
+s1p2
+s1p3
+```
+
+and the user asks:
+
+```text
+Is the first one good for programming?
+```
+
+A new search would be unnecessary.
+
+The relevant product already exists in:
+
+```text
+last_shown_deals
+```
+
+The follow-up path therefore becomes:
+
+```text
+Follow-up
+    ↓
+Resolve referenced product
+    ↓
+Use stored product data
+    ↓
+LLM explanation
+    ↓
+END
+```
+
+### Benefits
+
+- Lower latency
+- Fewer API calls
+- Better conversational continuity
+- More predictable answers
+- Avoids changing the product being discussed
+
+### Trade-off
+
+Ambiguous references can still be difficult.
+
+For example:
+
+```text
+Show me something else.
+```
+
+could mean:
+
+- another product from the current search
+- a completely new search
+
+The intent classifier must infer the most likely interpretation from context.
+
+---
+
+# 11. Why keep product IDs such as `s1p1`?
+
+### Decision
+
+Assign products lightweight conversation-scoped identifiers.
+
+Example:
+
+```text
+Search 1:
+s1p1
+s1p2
+s1p3
+
+Search 2:
+s2p1
+s2p2
+s2p3
+```
+
+### Reasoning
+
+Users naturally refer to:
+
+```text
+the first one
+option 2
+the third product
+```
+
+The application needs a reliable way to resolve those references against the products that were actually displayed.
+
+The identifiers make the mapping explicit inside the conversation state.
+
+### Trade-off
+
+These IDs are conversation references, not permanent product identifiers.
+
+They should not be treated as database-level product IDs.
+
+---
+
+# 12. Why keep UI and agent logic separate?
+
+### Decision
+
+Keep the Streamlit presentation layer separate from the LangGraph/node logic.
+
+### Reasoning
+
+The graph should focus on:
+
+```text
+Understanding
+Routing
+Retrieval
+Validation
+Scoring
+Recommendation
+```
+
+while the UI focuses on:
+
+```text
+Chat rendering
+Forms
+Cards
+Status indicators
+Styling
+```
+
+This separation makes it possible to change the interface without rewriting the recommendation pipeline.
+
+Conceptually:
+
+```text
+                 LangGraph
+                    │
+          structured recommendation
+                    │
+                    ▼
+              Streamlit UI
+```
+
+### Benefit
+
+A future application could replace Streamlit with another frontend while keeping most of the agent/backend architecture intact.
+
+---
+
+# 13. Why use live product data instead of mock products?
+
+### Decision
+
+Use live SerpAPI shopping data as the source of product information.
+
+### Reasoning
+
+A shopping assistant is fundamentally a data-trust problem.
+
+Showing:
+
+```text
+fake price
+fake product
+fake rating
+fake product link
+```
+
+would undermine the entire purpose of the application.
+
+Therefore, product facts are kept tied to retrieved data.
+
+The LLM can explain a product, but it should not become the source of truth for:
+
+```text
+price
+title
+image
+link
+product identity
+```
+
+---
+
+# 14. Why explicitly surface API failures instead of silently using fake fallback products?
+
+### Decision
+
+If the live product provider fails, the system reports the failure instead of silently substituting invented or static product results.
+
+### Reasoning
+
+A shopping assistant must distinguish between:
+
+```text
+No products matched
+```
+
+and:
+
+```text
+The product-search service failed
+```
+
+Using fake fallback products can make a user believe that displayed prices are current when they are not.
+
+An explicit failure is therefore more trustworthy.
+
+### Failure flow
+
+```text
+SerpAPI
+   ↓
+Failure
+   ↓
+SerpAPIError
+   ↓
+search_products handles failure
+   ↓
+serpapi_error_message
+   ↓
+synthesize surfaces the explanation
+```
+
+### Trade-off
+
+The application may visibly fail when the external service is unavailable.
+
+That is considered preferable to silently presenting unreliable shopping information.
+
+### Production direction
+
+A production implementation could add:
+
+- Retries
+- Exponential backoff
+- Circuit breakers
+- Multiple data providers
+- Monitoring
+- Quota alerts
+
+without changing the fundamental trust model.
+
+---
+
+# 15. Why distinguish API failure from no useful products?
+
+### Decision
+
+The state contains a dedicated:
+
+```text
+serpapi_error_message
+```
+
+rather than using an empty product list to represent every failure.
+
+### Reasoning
+
+These two situations have different meanings:
+
+```text
+raw_products = []
+serpapi_error_message = None
+```
+
+can represent:
+
+> Search completed, but there were no useful results.
+
+Whereas:
+
+```text
+raw_products = []
+serpapi_error_message = "..."
+```
+
+means:
+
+> The search service itself failed.
+
+The distinction allows the UI to provide a more accurate message.
+
+### Known limitation
+
+Some external API error responses may not clearly distinguish:
+
+```text
+legitimate zero results
+```
+
+from:
+
+```text
+service/API failure
+```
+
+If the provider exposes both situations through the same error representation, the application cannot always infer the exact cause reliably.
+
+---
+
+# 16. Why per-conversation logging?
+
+### Decision
+
+Maintain conversation-specific log files rather than putting every interaction into one large application log.
+
+### Reasoning
+
+A shopping conversation can involve several pipeline stages:
+
+```text
+classification
+search
+validation
+pricing analysis
+synthesis
+```
+
+When debugging a particular interaction, having a session-specific log makes it much easier to reconstruct what happened.
+
+For example:
+
+```text
+Conversation A
+    ↓
+Search laptop
+    ↓
+Unexpected pricing result
+```
+
+can be investigated without manually separating entries from unrelated sessions.
+
+### Trade-off
+
+Flat per-conversation files do not scale well for a large multi-user application.
+
+### Production direction
+
+Use:
+
+- Structured JSON logging
+- Centralized log aggregation
+- Metrics
+- Tracing
+- Error monitoring
+
+---
+
+# 17. Why use session state for current conversation memory?
+
+### Decision
+
+Keep the active conversation state in Streamlit session state.
+
+### Reasoning
+
+The application is currently designed as an interactive portfolio/demo application.
+
+Session state provides a simple way to maintain:
+
+```text
+conversation_history
+last_shown_deals
+search context
+current UI state
+```
+
+without introducing database infrastructure.
+
+### Trade-off
+
+Session state is not suitable for long-term persistence.
+
+Refreshing or losing the session can remove the conversation context.
+
+### Production direction
+
+A production application would move persistent state to something such as:
+
+```text
+Redis
+PostgreSQL
+Document database
+```
+
+and associate the state with authenticated users.
+
+---
+
+# 18. Why not make the entire application LLM-driven?
+
+### Decision
+
+Use the LLM as a reasoning component rather than the sole decision-maker.
+
+### Reasoning
+
+An LLM is excellent at:
+
+```text
+Natural language
+Ambiguous intent
+Explanations
+Semantic reasoning
+Conversation
+```
+
+It is not the ideal source of truth for:
+
+```text
+Arithmetic
+Ranking formulas
+Product prices
+IDs
+Links
+Peer-price statistics
+State transitions
+```
+
+Therefore the architecture deliberately separates responsibilities.
+
+```text
+             LLM
+              │
+       Language reasoning
+              │
+              ▼
+      Structured information
+              │
+              ▼
+      Deterministic Python
+              │
+       Product decisions
+              │
+              ▼
+             UI
+```
+
+This hybrid architecture gives the project both conversational flexibility and deterministic behavior.
+
+---
+
+# 19. Why use a hybrid LLM + deterministic pricing system?
+
+### Decision
+
+Use LLM reasoning where language interpretation is useful, while using Python for measurable pricing signals.
+
+### Reasoning
+
+Pricing analysis involves two different problems.
+
+### Structured numerical analysis
+
+Python is better suited for:
+
+```text
+discount calculations
+price ratios
+medians
+MAD
+outlier detection
+weighted scores
+```
+
+### Natural-language explanation
+
+The LLM is better suited for:
+
+```text
+"This product looks unusually expensive compared with similar listings."
+```
+
+The combination is therefore:
+
+```text
+Numerical analysis
+      ↓
+Risk signals
+      ↓
+LLM explanation
+      ↓
+User-friendly warning
+```
+
+This is more controllable than asking an LLM to perform the entire numerical analysis from scratch.
+
+---
+
+# 20. Why expose pricing risk instead of removing suspicious products?
+
+### Decision
+
+Flag potentially suspicious products rather than automatically deleting them from the result set.
+
+### Reasoning
+
+A suspicious price does not necessarily mean the product is fraudulent.
+
+Possible explanations include:
+
+- Genuine clearance
+- Temporary promotion
+- Different seller
+- Different configuration
+- Regional pricing
+- Data inconsistencies
+
+Therefore:
+
+```text
+Suspicious
+    ≠
+Definitely fake
+```
+
+The system keeps the product available while making the risk visible to the user.
+
+This gives the user more information without pretending that the system can prove fraud.
+
+---
+
+# 21. Production Evolution
+
+The current architecture is suitable for a portfolio/demo application. A production implementation would evolve several layers.
+
+| Current approach | Production direction |
 |---|---|
-| SQLite-style in-memory state | Redis or PostgreSQL for persistent multi-user state |
-| Per-conversation flat log files | Structured JSON logs → Datadog/CloudWatch |
-| SerpAPI free tier (100 searches/month) | Paid SerpAPI plan or direct retailer API |
-| Streamlit single-user local server | Deployed on Streamlit Cloud, Railway, or GCP Cloud Run |
-| `.env` file for secrets | AWS Secrets Manager or GCP Secret Manager |
-| Groq free tier | Paid Groq or switch to Anthropic/OpenAI based on cost/quality needs |
-| No authentication | Auth0 or Supabase for user accounts + search history persistence |
-| SerpAPI failure shown as a plain in-chat message | Proper circuit breaker + retry with exponential backoff, plus alerting to the team when quota nears its limit |
+| Streamlit session state | Persistent user/session database |
+| Flat conversation logs | Centralized structured logging |
+| SerpAPI dependency | Paid/multi-provider product data layer |
+| Single LLM provider | Provider abstraction + fallback model |
+| `.env` secrets | Managed secret store |
+| No authentication | User authentication and authorization |
+| Basic API error handling | Retry + circuit breaker + monitoring |
+| Current-session memory | Persistent user preferences/history |
+| Live search for every new query | Search/result caching |
+| Fixed recommendation weights | Configurable/personalized ranking |
+| Limited price intelligence | Historical price database |
+| Basic product matching | Stronger semantic deduplication |
 
 ---
 
-## 10. Why surface SerpAPI failures explicitly instead of falling back to mock data?
+# 22. Known Limitations
 
-**Decision:** When SerpAPI fails (quota exhausted, invalid key, network error), `search_products_node` shows the user a plain explanation ("SerpAPI search quota has been used up for now...") instead of quietly substituting a local mock product catalog.
+The architecture intentionally has several limitations that are important to keep in mind.
 
-**Reasoning:**
-An earlier version of this project fell back to a static local JSON file of sample products whenever SerpAPI failed, so the demo would "still work." In practice this is worse than an honest error: the user has no way to tell real, live prices from fabricated demo data, which is exactly the kind of silent failure a shopping assistant shouldn't have — trust in the prices shown is the entire point of the product. An explicit message costs nothing and can't be mistaken for a real deal.
+### 22.1 No true historical price tracking
 
-**Trade-off:** A live demo can go visibly blank if the SerpAPI quota runs out mid-demo, which a fallback would have papered over. Considered acceptable — an honest "quota's out, try again shortly" message is a better failure mode than a shopping tool that might be silently lying about prices.
+Pricing-risk analysis uses currently available product information and peer-price signals.
 
-**Production note:** `SerpAPIError` (in `utils/exceptions.py`) is the single point where this distinction is made — a retry/circuit-breaker layer would wrap around `SerpApiClient.search_google_shopping()` without needing to touch any node code.
+It does not maintain a long-term historical graph such as:
+
+```text
+₹80k
+ │
+₹75k
+ │
+₹62k
+ │
+₹59k
+```
+
+Therefore, the system should describe pricing as a **risk assessment**, not verified historical price evidence.
 
 ---
 
-## 11. Known limitations and honest trade-offs
+### 22.2 Review text is not the primary input
 
-- **Price analysis is not based on real historical price data.** `price_validity_node` asks the LLM to judge whether a listed price looks inflated using its general knowledge of market pricing for that product category — it does not track or graph actual price history over time. Real historical price tracking would require a paid service like Keepa (Amazon-only) or building a price database over time. This is clearly framed in the UI as an LLM judgment call, not verified history.
+The product-search pipeline primarily works with structured signals such as:
 
-- **Review text is not fetched.** SerpAPI's `google_shopping` engine returns rating and review count, but not review text. Fetching actual review snippets requires a second SerpAPI call using the `google_product` engine with a product ID — planned but not implemented due to API quota constraints.
+```text
+rating
+review count
+```
 
-- **Follow-up classification can misfire on ambiguous queries.** "Show me something else" is genuinely ambiguous — is it a follow-up ("something else from what you showed me") or a new search? The classifier uses a prompt that biases toward FOLLOW_UP when products were recently shown, but edge cases exist.
+rather than performing deep sentiment analysis over complete review text.
 
-- **SerpAPI's "no results" and "real failure" cases aren't distinguished yet.** SerpAPI returns a query that legitimately has zero shopping matches through the same `"error"` field used for actual outages/quota problems. Both currently surface the same "SerpAPI unavailable" message, even though the right next step is different (broaden the search vs. wait and retry). Flagged as a follow-up fix, not yet implemented.
+A future version could retrieve and analyze review snippets when sufficient product-level data is available.
 
-- **No user authentication or persistent history.** Conversation history lives only in `st.session_state` and is lost on page refresh. A real product would persist this to a database tied to a user account.
+---
+
+### 22.3 Ambiguous follow-ups can still be difficult
+
+Messages such as:
+
+```text
+Show me something else.
+```
+
+may have more than one valid interpretation.
+
+The classifier uses the current conversation context, but ambiguity cannot always be eliminated.
+
+---
+
+### 22.4 External product data can be incomplete
+
+A shopping listing may not contain:
+
+- Rating
+- Review count
+- Image
+- Direct seller link
+- Complete specifications
+
+The application therefore treats many fields as optional rather than assuming that every listing is complete.
+
+---
+
+### 22.5 No long-term user personalization
+
+Current conversation context can influence recommendations, but the application does not yet maintain a permanent user preference profile such as:
+
+```text
+Preferred brands
+Typical budget
+Preferred retailers
+Historical purchases
+Ranking preferences
+```
+
+This would require persistent user-level storage.
+
+---
+
+# Final Architecture Philosophy
+
+The Smart Shopping Agent follows a hybrid architecture:
+
+```text
+                    Natural Language
+                           │
+                           ▼
+                    ┌─────────────┐
+                    │     LLM     │
+                    │             │
+                    │ Understand  │
+                    │ Classify    │
+                    │ Explain     │
+                    └──────┬──────┘
+                           │
+                           ▼
+                  Structured Information
+                           │
+                           ▼
+              ┌─────────────────────────┐
+              │   Deterministic Core    │
+              │                         │
+              │ Product Data            │
+              │ Recommendation Score    │
+              │ Pricing Analysis        │
+              │ State & Routing         │
+              └────────────┬────────────┘
+                           │
+                           ▼
+                    Final Recommendation
+                           │
+                           ▼
+                      Streamlit UI
+```
+
+The central engineering principle is:
+
+> **Let the LLM reason about language, but let deterministic code control the facts and decisions that matter.**
+
+This keeps the system conversational enough to behave like an agent while remaining structured enough to be explainable, debuggable, and trustworthy.

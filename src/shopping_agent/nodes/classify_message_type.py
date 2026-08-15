@@ -2,7 +2,7 @@ import json
 import re
 from langchain_core.prompts import ChatPromptTemplate
 from src.shopping_agent.graph.state import ShoppingState
-from src.shopping_agent.services.groq_client import GroqClient
+from src.shopping_agent.services.groq_client import get_groq_llm
 from src.shopping_agent.utils.logger import agent_logger
 
 
@@ -22,7 +22,7 @@ def classify_message_type_node(state: ShoppingState) -> ShoppingState:
     user_query = state.get("user_query", "")
 
     try:
-        llm = GroqClient().get_llm()
+        llm = get_groq_llm()
 
         prompt = ChatPromptTemplate.from_messages([
             ("system",

@@ -26,25 +26,6 @@ from src.shopping_agent.nodes.classify_message_type import classify_message_type
 from src.shopping_agent.utils.logger import agent_logger
 
 def build_graph():
-    """
-    Compiles and returns the LangGraph state machine for the shopping agent.
-
-    Graph flow:
-        classify_message_type
-            -> END                          (if chitchat)
-            -> classify_intent
-                -> answer_followup -> END    (if follow-up question)
-                -> parse_query
-                    -> END                   (if clarification needed)
-                    -> search_products
-                        -> validate_deals
-                            -> price_validity
-                                -> synthesize -> END
-
-    Returns:
-        CompiledGraph: A compiled LangGraph state machine ready to be
-        invoked or streamed against a ShoppingState.
-    """
     agent_logger.info("Compiling the LangGraph state machine.")
     
     builder = StateGraph(ShoppingState)
@@ -94,7 +75,7 @@ def build_graph():
     
     # Linear flow: Search -> Validate -> Check Prices
     builder.add_edge("search_products", "validate_deals")
-    builder.add_edge("validate_deals", "price_validity") # <-- New Edge
+    builder.add_edge("validate_deals", "price_validity")
     builder.add_edge("price_validity", "synthesize")
     builder.add_edge("synthesize", END)
 

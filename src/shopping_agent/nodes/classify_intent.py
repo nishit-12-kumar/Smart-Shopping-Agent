@@ -1,83 +1,89 @@
-import json
-import re
+from typing import Optional
+
+from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
+
 from src.shopping_agent.graph.state import ShoppingState
-from src.shopping_agent.services.groq_client import GroqClient
+from src.shopping_agent.services.groq_client import get_groq_llm
 from src.shopping_agent.utils.logger import agent_logger
 
 
-def _extract_json(raw_text: str) -> dict:
-    raw_text = raw_text.strip()
-    raw_text = re.sub(r"^```(json)?", "", raw_text).strip()
-    raw_text = re.sub(r"```$", "", raw_text).strip()
-    match = re.search(r"\{.*\}", raw_text, re.DOTALL)
-    if not match:
-        raise ValueError("No JSON found in classification response")
-    return json.loads(match.group(0))
+class IntentClassification(BaseModel):
+    intent: str = Field(description="Either 'FOLLOW_UP' if the message is about a product already shown, or 'NEW' if it's a fresh search request.")
+    referenced_product_id: Optional[str] = Field(
+        default=None,
+        description="The id (e.g. 'p1', 'p2') of the specific product the user is referring to, "
+                    "from the ids listed in the product history below. Null if intent is NEW, or "
+                    "if it's a FOLLOW_UP that doesn't point at one specific product (e.g. 'show me cheaper options')."
+    )
+
+
+def _format_history_for_prompt(search_history: list) -> str:
+    blocks = []
+    for turn in search_history:
+        lines = "\n".join(
+            f"  [{p.get('id')}] {p.get('title')} — ₹{p.get('price')}"
+            for p in turn.get("products", [])
+        )
+        blocks.append(f"Search: \"{turn.get('query')}\"\n{lines}")
+    return "\n\n".join(blocks)
 
 
 def classify_intent_node(state: ShoppingState) -> ShoppingState:
     agent_logger.info("Entering classify_intent_node.")
 
-    last_shown_deals = state.get("last_shown_deals", [])
+    search_history = state.get("search_history", [])
     user_query = state.get("user_query", "")
 
-    # No previous deals shown yet -> nothing to follow up on, always NEW
-    if not last_shown_deals:
+    if not search_history:
         state["intent"] = "NEW"
-        agent_logger.info(f"No previous deals in memory (count={len(last_shown_deals)}). Classified as NEW.")
+        agent_logger.info("No previous search history in memory. Classified as NEW.")
         return state
 
-
     try:
-        llm = GroqClient().get_llm()
+        llm = get_groq_llm()
+        structured_llm = llm.with_structured_output(IntentClassification)
 
-        products_list = "\n".join(
-            f"- {d.get('title')} (₹{d.get('price')})" for d in last_shown_deals
-        )
-        """Product_list looks like this:
-        - Dell Inspiron (₹55000)
-        - HP Pavilion (₹60000)
-        - Lenovo IdeaPad (₹58000)
-        """
+        history_text = _format_history_for_prompt(search_history)
 
         prompt = ChatPromptTemplate.from_messages([
             ("system",
-             "You are classifying a user's shopping message. Below is a list of products "
-             "that were already shown to the user in the previous turn. Decide if the new "
-             "message is a FOLLOW_UP question about one of those specific products "
-             "(e.g. 'tell me more about the LG one', 'is the first one good for gaming', "
-             "'compare option 2 and 3'), or a NEW, unrelated search request.\n\n"
-             "Respond with ONLY raw JSON in this exact shape: "
-             "{{\"intent\": \"FOLLOW_UP\" or \"NEW\", \"referenced_product\": \"exact product title or null\"}}"
+             "You are classifying a user's shopping message. Below are the last few searches "
+             "already shown to the user, each with an id in brackets before every product "
+             "(e.g. [p2]). Decide if the new message is a FOLLOW_UP question about one or more "
+             "of these specific products (e.g. 'tell me more about the LG one', 'is the first "
+             "one good for gaming', 'compare option 2 and 3'), or a NEW, unrelated search "
+             "request. If it's a FOLLOW_UP about one clear product, return that product's id "
+             "as referenced_product_id — do not return its title, only the id shown in brackets."
             ),
-            ("human", "Previously shown products:\n{products}\n\nNew message: {query}")
+            ("human", "Recent search history:\n{history}\n\nNew message: {query}")
         ])
 
-        chain = prompt | llm
-        result = chain.invoke({"products": products_list, "query": user_query})
+        chain = prompt | structured_llm
+        result: IntentClassification = chain.invoke({"history": history_text, "query": user_query})
 
-        agent_logger.info(f"RAW intent classification output: {result.content!r}")
-        parsed = _extract_json(result.content)
+        agent_logger.info(
+            f"Intent classification result: intent={result.intent}, "
+            f"referenced_product_id={result.referenced_product_id}"
+        )
 
-        state["intent"] = parsed.get("intent", "NEW")
+        state["intent"] = result.intent if result.intent in ("FOLLOW_UP", "NEW") else "NEW"
 
-        # Creates search_params if it doesn't exist.
         state["search_params"] = state.get("search_params") or {}
-
-        state["search_params"]["referenced_product"] = parsed.get("referenced_product")
+        state["search_params"]["referenced_product_id"] = result.referenced_product_id
         """
         State looks like this after classification:
-        
+
         state = {
             "intent": "FOLLOW_UP",
             "search_params": {
-                "referenced_product": "HP Pavilion"
+                "referenced_product_id": "p2"
             }
         }
-        """
-        agent_logger.info(f"Classified intent: {state['intent']} | referenced: {parsed.get('referenced_product')}")
 
+        Downstream (answer_followup_node), "p2" is looked up directly against
+        the product summaries in search_history — no fuzzy title matching.
+        """
     except Exception as e:
         agent_logger.error(f"Intent classification failed: {str(e)}", exc_info=True)
         # Fail safe: treat as a NEW search rather than getting stuck

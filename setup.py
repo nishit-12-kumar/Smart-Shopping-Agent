@@ -1,16 +1,3 @@
-"""
-setup.py for Smart Shopping Negotiator
---------------------------------------
-Allows the project to be installed as a local package with:
-    pip install -e .          (development / editable install)
-    pip install .             (regular install)
-
-Running `pip install -e .` is the recommended way to work on this project
-locally — it adds `src/` to Python's module search path, so every import
-like `from src.shopping_agent.graph.state import ShoppingState` resolves
-correctly from any working directory, without manually setting PYTHONPATH.
-"""
-
 from setuptools import setup, find_packages
 
 setup(

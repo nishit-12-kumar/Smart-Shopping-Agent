@@ -1,7 +1,7 @@
 import json
 import re
 from langchain_core.prompts import ChatPromptTemplate
-from src.shopping_agent.services.groq_client import GroqClient
+from src.shopping_agent.services.groq_client import get_groq_llm
 from src.shopping_agent.utils.logger import agent_logger
 
 SKIP_LABEL = "Skip / Don't Know"
@@ -24,7 +24,7 @@ def generate_spec_options(user_query: str) -> dict:
     agent_logger.info(f"Generating dynamic clarifying questions for: '{user_query}'")
 
     try:
-        llm = GroqClient().get_llm()
+        llm = get_groq_llm()
 
         prompt = ChatPromptTemplate.from_messages([
             ("system",

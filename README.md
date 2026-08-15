@@ -1,354 +1,749 @@
 # 🛒 Smart Shopping Agent
 
-An **agentic AI-powered shopping assistant** that thinks before it searches. It classifies your intent, asks the right clarifying questions, fetches live product data, scores every deal, detects fake discounts, and delivers a polished product recommendation card — all inside a conversational chat interface.
+An **agentic AI-powered shopping assistant** that helps users find, evaluate, and compare products using live shopping data. Instead of simply returning search results, the system understands the user's intent, asks for missing preferences, retrieves real products, evaluates deal quality, checks pricing risk, and presents a ranked recommendation.
 
-Built with **LangGraph**, **Groq (Llama 3.3 70B)**, **SerpAPI**, and **Streamlit**.
-
----
-
-![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
-![LangGraph](https://img.shields.io/badge/LangGraph-Agentic_Pipeline-orange)
-![Groq](https://img.shields.io/badge/Groq-Llama_3.3_70B-purple)
-![Streamlit](https://img.shields.io/badge/UI-Streamlit-red)
-![SerpAPI](https://img.shields.io/badge/Data-SerpAPI_Google_Shopping-green)
+Built with **LangGraph**, **Groq (Llama 3.3 70B)**, **SerpAPI Google Shopping**, and **Streamlit**.
 
 ---
 
----
+## 🚀 Live Demo
 
-## 🔗 Live Demo
-
-**[👉 Try it live](https://smart-shopping-agent-negotiator.streamlit.app/)**
+**[👉 Try the Smart Shopping Agent](https://smart-shopping-agent-negotiator.streamlit.app/)**
 
 ---
 
-## 📌 What This Project Does
+## ✨ Why This Project?
 
-Most shopping chatbots are just a single prompt → single answer. This system is a **7-node multi-agent pipeline** where each node has one focused job:
+> **From search results to purchase decisions.**
 
-| What the user experiences | What's happening under the hood |
-|---|---|
-| Types "hi" or "thanks" | `classify_message_type` detects chitchat, replies directly, skips all search nodes |
-| Types "I want to buy a laptop" | `parse_query` detects vague query, triggers dynamic clarification form |
-| Fills in processor, RAM, budget | Refined query built from selections |
-| Sees real products appear | `search_products` calls SerpAPI Google Shopping with live data |
-| Each product has a confidence score | `validate_deals` evaluates product-request fit (0-100) via Groq |
-| Suspicious product flagged | `price_validity` detects fake/inflated discounts |
-| Gets a polished recommendation card | `synthesize` builds structured output — prices never hallucinated |
-| Asks "tell me more about the first one" | `classify_intent` detects follow-up, `answer_followup` replies from memory |
+The diagrams in this README make the agent's workflow easier to understand before diving into the implementation.
 
----
+Traditional shopping search usually works like:
 
-## 🧠 Agent Architecture
-
-```
-User Message
-     │
-     ▼
-classify_message_type ──CHITCHAT──► END (direct conversational reply)
-     │
-   SHOPPING
-     │
-     ▼
-classify_intent ──FOLLOW_UP──► answer_followup ──► END
-     │
-    NEW
-     │
-     ▼
-parse_query ──needs clarification──► END (Streamlit spec form renders)
-     │
-  has specs
-     │
-     ▼
-search_products (SerpAPI Google Shopping)
-     │
-     ▼
-validate_deals (confidence scoring 0-100 per product)
-     │
-     ▼
-price_validity (fake discount detection)
-     │
-     ▼
-synthesize (structured card — LLM reasons, never invents prices)
-     │
-     ▼
-    END
+```text
+User Query → Search Results → User Decides
 ```
 
-The Smart Shopping Agent is built as a **LangGraph-based multi-agent pipeline**, where each node is responsible for a single task such as intent classification, query parsing, product retrieval, validation, and response synthesis.
+This project adds an intelligent decision-making layer:
+
+```text
+User Query
+    ↓
+Understand Intent
+    ↓
+Identify Missing Requirements
+    ↓
+Ask Relevant Questions
+    ↓
+Search Live Products
+    ↓
+Evaluate Product Relevance
+    ↓
+Analyze Pricing & Deal Risk
+    ↓
+Rank Products
+    ↓
+Explain the Recommendation
+```
+
+The goal is to help users make a **better purchasing decision**, rather than simply showing the cheapest product.
+
+---
+
+## 🧠 Core Features
+
+### 1. Agentic Conversation Flow
+
+The assistant uses a **LangGraph state machine** to route each user message through the appropriate workflow.
+
+It can distinguish between:
+
+- Normal conversation
+- New shopping requests
+- Follow-up questions about previously displayed products
+
+For example:
+
+```text
+"Hi, what can you do?"
+        ↓
+Chitchat response
+
+"I want to buy a laptop"
+        ↓
+Clarification workflow
+
+"Is the first laptop good for programming?"
+        ↓
+Follow-up workflow using conversation memory
+```
+
+---
+
+### 2. Dynamic Requirement Clarification
+
+Users don't need to know every specification before starting a search.
+
+For a query such as:
+
+```text
+I want to buy a laptop
+```
+
+the system identifies that additional configuration may be required and generates a dynamic specification form.
+
+The form can collect preferences such as:
+
+- Budget
+- RAM
+- Processor
+- Storage
+- Brand
+- Size
+- Usage
+- Other product-specific requirements
+
+The clarification system is designed to work across different product categories instead of relying on one fixed form.
+
+---
+
+### 3. Live Product Search
+
+Product information is retrieved using **SerpAPI's Google Shopping results**.
+
+The system can work with live information such as:
+
+- Product title
+- Price
+- Rating
+- Review count
+- Product image
+- Seller/source
+- Product link
+- Other available listing information
+
+This keeps product identity and purchasing information tied to retrieved data rather than generated by the LLM.
+
+---
+
+### 4. Product Relevance Scoring
+
+Each retrieved product receives a **confidence/relevance score** based on how well it matches the user's requirements.
+
+The score considers factors such as:
+
+- Requirement match
+- Product specifications
+- Product rating
+- Review volume
+- Price value
+- Pricing trust
+
+This allows the system to recommend products based on **overall suitability**, not simply lowest price.
+
+---
+
+### 5. Pricing Risk Analysis
+
+One of the main goals of the project is to identify potentially misleading deals.
+
+The pricing-analysis system examines signals such as:
+
+- Discount percentage
+- Original-price/current-price relationship
+- Category-specific discount expectations
+- Suspicious round-number price ratios
+- Peer-product pricing
+- Price outliers
+- Review and rating evidence
+
+Products are grouped with similar listings where possible, and peer-price statistics are used to identify unusual pricing behavior.
+
+A high discount is **not automatically treated as fake**. Multiple signals contribute to the overall pricing-risk assessment.
+
+---
+
+### 6. Deterministic Recommendation Engine
+
+A key design principle is separating **LLM reasoning** from **critical product decisions**.
+
+The recommendation engine uses deterministic Python logic for product selection and scoring.
+
+The current weighting is:
+
+| Factor | Weight |
+|---|---:|
+| Requirement Match | 50% |
+| Rating | 15% |
+| Reviews | 10% |
+| Price Value | 10% |
+| Pricing Trust | 15% |
+
+This keeps the final ranking reproducible and prevents the LLM from arbitrarily changing product prices, product identities, links, or recommendation scores.
+
+---
+
+### 7. LLM-Assisted Explanations
+
+Groq's **Llama 3.3 70B** is used for tasks where language understanding is valuable, including:
+
+- Message classification
+- Follow-up intent classification
+- Product-fit evaluation
+- Recommendation explanations
+- Trade-off explanations
+- Follow-up suggestions
+
+The LLM receives product data from the system and generates qualitative reasoning around those products.
+
+It does **not** control critical product fields such as:
+
+- Product identity
+- Price
+- Product ID
+- Product link
+- Final deterministic recommendation score
+- Pricing-risk decision
+
+---
+
+### 8. Multi-Turn Product Memory
+
+The assistant maintains conversation context across multiple searches.
+
+It keeps track of:
+
+- Conversation history
+- Recently displayed products
+- Previous search turns
+- Product IDs
+- Search count
+
+Products receive unique identifiers such as:
+
+```text
+s1p1
+s1p2
+s1p3
+
+s2p1
+s2p2
+s2p3
+```
+
+This allows users to ask questions such as:
+
+```text
+Tell me more about the first one.
+
+Is option 2 better for programming?
+
+Compare the second and third options.
+
+Show me something cheaper.
+```
+
+without having to repeat the complete product information.
+
+---
+
+## 🔄 Agent Architecture
+
+The complete execution graph is shown below. It gives a visual overview of how the application moves from user input through classification, query parsing, live search, validation, pricing-risk analysis, and final recommendation synthesis.
 
 <p align="center">
-  <img src="Graph%20Diagram.png"
-       alt="Smart Shopping Agent Architecture"
-       width="100%">
+  <img src="images/Complete%20node-to-node%20architecture.png" alt="Smart Shopping Agent complete node-to-node architecture" width="820">
 </p>
 
-### Pipeline Overview
+*Complete node-to-node architecture of the Smart Shopping Agent.*
 
-1. **Message Classification** – Detects whether the user is chatting or shopping.
-2. **Intent Classification** – Identifies new searches vs follow-up questions.
-3. **Query Parsing** – Extracts product specifications and asks for missing details.
-4. **Product Search** – Retrieves live products using SerpAPI.
-5. **Deal Validation** – Scores each product based on user requirements.
-6. **Price Verification** – Detects suspicious discounts and pricing anomalies.
-7. **Response Synthesis** – Generates a structured recommendation card with reasoning.
-
-This modular workflow makes the system easy to extend, debug, and maintain while keeping each agent focused on a single responsibility.
-
-
----
-
-## ✨ Features
-
-### Agentic Intelligence
-- **Intent classification** — distinguishes chitchat ("hi", "thanks") from genuine shopping requests using Groq, not keyword lists
-- **Follow-up memory** — follow-up questions answered directly from previous results, no re-searching
-- **Dynamic clarification form** — Groq generates product-specific questions (AC needs room size and tonnage, laptop needs RAM and processor, shoes need size and type) — works for any product, not a hardcoded form
-- **Vague query detection** — "I want to buy a laptop" triggers clarification; "laptop with 16GB RAM under ₹60,000" proceeds directly to search
-
-### Data & Validation
-- **Live product data** — real products and prices from Google Shopping via SerpAPI
-- **Confidence scoring** — every product rated 0-100 for fit against the user's actual request (not just price sorting)
-- **Fake discount detection** — flags products with artificially inflated "original prices"
-- **Review trust check** — warns about products with high ratings but suspiciously few reviews
-- **Hallucination-proof output** — prices, titles, and images always come from real SerpAPI data; the LLM only generates reasoning text
-
-### UI & Experience
-- **Product image cards** — thumbnail photos from SerpAPI shown in the recommendation card
-- **Star ratings** — real buyer ratings (e.g. ★★★★☆ 4.3/5 from 2,400 reviews) rendered visually
-- **Color-coded confidence badges** — green (85+), yellow (60-84), red (below 60)
-- **Clickable "View deal" links** — direct links to the seller's page; falls back to a Google Shopping search if SerpAPI doesn't return a direct URL
-- **Spec match tags** — ✓ tags showing which of the user's preferences this product satisfies
-- **Red flag banners** — suspicious pricing highlighted in a distinct warning block
-- **Follow-up suggestion chips** — two tappable buttons after every recommendation for natural next questions
-- **Live agent progress** — "✅ Completed: validate_deals" checkmarks appear as each node finishes
-- **Per-conversation logging** — each chat session gets its own timestamped log file in `logs/`
-
----
-
-## 🗂️ Project Structure
-
+```text
+                         User Message
+                              │
+                              ▼
+                 ┌─────────────────────────┐
+                 │ classify_message_type   │
+                 └────────────┬────────────┘
+                              │
+                    ┌─────────┴─────────┐
+                    │                   │
+                 CHITCHAT            SHOPPING
+                    │                   │
+                    ▼                   ▼
+                   END        ┌──────────────────┐
+                              │ classify_intent  │
+                              └────────┬─────────┘
+                                       │
+                              ┌────────┴────────┐
+                              │                 │
+                          FOLLOW_UP           NEW
+                              │                 │
+                              ▼                 ▼
+                    answer_followup       parse_query
+                              │                 │
+                              ▼          ┌──────┴──────┐
+                             END         │             │
+                                  Clarification    Has Specs
+                                      │             │
+                                      ▼             ▼
+                                    END       search_products
+                                                    │
+                                                    ▼
+                                             validate_deals
+                                                    │
+                                                    ▼
+                                             price_validity
+                                                    │
+                                                    ▼
+                                               synthesize
+                                                    │
+                                                    ▼
+                                                   END
 ```
-smart-shopping-agent/
+
+### Pipeline Stages
+
+1. **Message Classification**  
+   Determines whether the message is chitchat or a shopping-related request.
+
+2. **Intent Classification**  
+   Distinguishes a new search from a follow-up about products already shown.
+
+3. **Query Parsing**  
+   Checks whether the request contains enough product configuration information.
+
+4. **Dynamic Clarification**  
+   If important information is missing, the Streamlit UI collects relevant preferences.
+
+5. **Product Search**  
+   Retrieves live Google Shopping results through SerpAPI.
+
+6. **Deal Validation**  
+   Evaluates product relevance and supporting signals.
+
+7. **Price Validity Analysis**  
+   Detects potentially suspicious discounts and pricing anomalies.
+
+8. **Recommendation Synthesis**  
+   Deterministically selects the top product and alternatives, while the LLM generates concise explanations.
+
+### 🔎 Node-by-Node Visual Breakdown
+
+The following diagrams show the internal workflow in more detail.
+
+#### Nodes 1–4 — Understanding, Intent, Follow-ups & Query Parsing
+
+These stages handle the conversational entry point, distinguish shopping from chitchat, identify new searches versus follow-ups, and determine whether the query contains enough information to search.
+
+<p align="center">
+  <img src="images/Node%201-4.png" alt="Nodes 1 to 4 - message classification, intent, follow-up and query parsing" width="820">
+</p>
+
+#### Nodes 5–6 — Live Search & Deal Validation
+
+The search stage retrieves live Google Shopping products, followed by product-level validation against the user's requirements.
+
+<p align="center">
+  <img src="images/Node%205-6.png" alt="Nodes 5 and 6 - product search and deal validation" width="820">
+</p>
+
+#### Node 7 — Deterministic Pricing-Risk Engine
+
+Pricing is evaluated using rule-based checks and peer-product statistics. The LLM can explain the result, but does not decide the numerical risk score.
+
+<p align="center">
+  <img src="images/Node%207%20-%20price_validity.png" alt="Node 7 - deterministic pricing risk engine" width="620">
+</p>
+
+#### Node 8 — Recommendation Synthesis
+
+The final stage combines deterministic product ranking with LLM-generated qualitative reasoning to create the structured recommendation shown in the UI.
+
+<p align="center">
+  <img src="images/Node%208%20-%20synthesize.png" alt="Node 8 - recommendation synthesis" width="620">
+</p>
+
+---
+
+## 🏗️ Project Structure
+
+```text
+SSA/
 │
-├── app.py                              # Streamlit UI — chat interface, card rendering
+├── app.py
 ├── requirements.txt
-├── setup.py
-├── .env.example
-├── .gitignore
-├── README.md
 │
 ├── src/
 │   └── shopping_agent/
-│       ├── config.py                   # Loads .env, validates API keys present
+│       ├── __init__.py
+│       ├── config.py
 │       │
 │       ├── graph/
-│       │   ├── state.py                # ShoppingState TypedDict — shared across all nodes
-│       │   ├── builder.py              # Compiles and wires the LangGraph graph
-│       │   └── edges.py                # Conditional routing functions
+│       │   ├── state.py
+│       │   ├── builder.py
+│       │   └── edges.py
 │       │
 │       ├── nodes/
-│       │   ├── classify_message_type.py  # Chitchat vs shopping intent
-│       │   ├── classify_intent.py        # Follow-up vs new search detection
-│       │   ├── answer_followup.py        # Answers from memory, skips search entirely
-│       │   ├── parse_query.py            # Spec-sufficiency check, triggers clarification
-│       │   ├── search_products.py        # SerpAPI call, quota-error handling
-│       │   ├── validate_deals.py         # Confidence scoring via Groq + review-trust flag
-│       │   ├── price_validity.py         # Fake discount detection via Groq
-│       │   └── synthesize.py             # Structured card output — deterministic product selection
+│       │   ├── classify_message_type.py
+│       │   ├── classify_intent.py
+│       │   ├── answer_followup.py
+│       │   ├── parse_query.py
+│       │   ├── search_products.py
+│       │   ├── validate_deals.py
+│       │   ├── price_validity.py
+│       │   └── synthesize.py
 │       │
 │       ├── services/
-│       │   ├── groq_client.py            # Groq LLM client (Llama 3.3 70B, temp=0)
-│       │   └── serpapi_client.py         # SerpAPI wrapper, product_link extraction
+│       │   ├── groq_client.py
+│       │   └── serpapi_client.py
 │       │
 │       └── utils/
-│           ├── logger.py                 # Per-conversation timestamped log files
-│           ├── spec_options.py           # LLM-generated clarification questions
-│           └── exceptions.py            # SerpAPIError, ShoppingAgentBaseException
+│           ├── exceptions.py
+│           ├── logger.py
+│           └── spec_options.py
 │
-├── logs/                               # Runtime conversation logs (gitignored)
-│
-└── docs/
-    ├── architecture.md                 # Full node graph, state schema, routing diagram
-    └── decisions.md                    # Engineering decisions and trade-offs
+└── ui/
+    ├── __init__.py
+    ├── components.py
+    └── styles.py
 ```
 
----
+### Important Modules
 
-## 🚀 Getting Started
+| Module | Responsibility |
+|---|---|
+| `app.py` | Streamlit application and session management |
+| `graph/builder.py` | Builds and compiles the LangGraph workflow |
+| `graph/state.py` | Defines the shared `ShoppingState` |
+| `graph/edges.py` | Conditional routing between graph nodes |
+| `classify_message_type.py` | Chitchat vs shopping classification |
+| `classify_intent.py` | New search vs follow-up detection |
+| `answer_followup.py` | Answers questions using stored product/search context |
+| `parse_query.py` | Determines whether enough requirements are available |
+| `search_products.py` | Retrieves live Google Shopping products |
+| `validate_deals.py` | Calculates product-fit and validation signals |
+| `price_validity.py` | Performs pricing-risk and peer-price analysis |
+| `synthesize.py` | Calculates recommendation scores and assembles the final recommendation |
+| `groq_client.py` | Groq LLM integration |
+| `serpapi_client.py` | SerpAPI integration |
+| `spec_options.py` | Generates dynamic product specification options |
+| `components.py` | Recommendation cards and Streamlit UI components |
+| `styles.py` | Application styling |
 
-### Prerequisites
-- Python 3.10+
-- A [Groq API key](https://console.groq.com) — free tier available
-- A [SerpAPI key](https://serpapi.com) — free tier: 250 searches/month
-
-### 1. Clone the repository
-```bash
-git clone https://github.com/your-username/smart-shopping-agent.git
-cd smart-shopping-agent
-```
-
-### 2. Create and activate a virtual environment
-```bash
-python -m venv venv
-
-# Windows
-venv\Scripts\activate
-
-# macOS / Linux
-source venv/bin/activate
-```
-
-### 3. Install dependencies
-```bash
-pip install -e .
-```
-
-### 4. Configure environment variables
-```bash
-cp .env.example .env
-```
-
-Open `.env` and add your keys:
-```
-GROQ_API_KEY=your_groq_key_here
-SERPAPI_API_KEY=your_serpapi_key_here
-```
-
-### 5. Run the app
-```bash
-streamlit run app.py
-```
-
-Open `http://localhost:8501` in your browser.
-
----
-
-## 💬 Example Conversations
-
-**Fresh product search:**
-```
-You:    I want to buy a gaming laptop
-Agent:  [Clarification form: Budget? / Primary use? / RAM? / Brand?]
-You:    ₹80,000-₹1,00,000 / Gaming / 16GB / No preference
-Agent:  [Product card: top pick with image, rating, price, spec tags, buy link + alternatives]
-```
-
-**Follow-up question:**
-```
-You:    Tell me more about the first option
-Agent:  [Answers directly from previous results — no new API calls triggered]
-```
-
-**Chitchat:**
-```
-You:    Hey, what can you do?
-Agent:  I can help you find the best deals on laptops, phones, ACs, and pretty 
-        much anything you want to shop for. Just tell me what you're looking for!
-```
 ---
 
 ## 🛠️ Tech Stack
 
-| Tool | Version | Role |
-|---|---|---|
-| Python | 3.10+ | Core language |
-| LangGraph | ≥0.0.20 | Multi-agent orchestration, conditional routing |
-| LangChain-Groq | ≥0.1.0 | Groq LLM client integration |
-| LangChain-Core | ≥0.1.50 | Prompts, Pydantic structured output |
-| Groq / Llama 3.3 70B | — | All LLM reasoning (classification, scoring, synthesis) |
-| SerpAPI | ≥2.4.2 | Live Google Shopping product data |
-| Streamlit | ≥1.32.0 | Chat UI, card rendering, clarification form |
-| Pydantic | ≥2.0.0 | Typed structured output schemas for LLM calls |
-| python-dotenv | ≥1.0.1 | Environment variable / secret management |
+| Technology | Purpose |
+|---|---|
+| **Python** | Core application logic |
+| **LangGraph** | Agent orchestration and conditional workflow routing |
+| **LangChain Core** | Prompt handling and structured LLM integration |
+| **Groq** | Fast LLM inference |
+| **Llama 3.3 70B** | Classification, reasoning, and explanation generation |
+| **SerpAPI** | Live Google Shopping product data |
+| **Streamlit** | Interactive conversational UI |
+| **Pydantic** | Structured and validated LLM outputs |
+| **python-dotenv** | Environment variable management |
 
 ---
 
 ## 🔑 Environment Variables
 
-| Variable | Required | Where to get it |
-|---|---|---|
-| `GROQ_API_KEY` | ✅ | [console.groq.com](https://console.groq.com) |
-| `SERPAPI_API_KEY` | ✅ | [serpapi.com](https://serpapi.com) |
+Create a `.env` file in the project root:
+
+```env
+GROQ_API_KEY=your_groq_api_key
+SERPAPI_API_KEY=your_serpapi_api_key
+```
+
+### API Keys
+
+- **Groq:** https://console.groq.com/
+- **SerpAPI:** https://serpapi.com/
+
+Never commit your real API keys to GitHub.
 
 ---
 
-## 🔐 Security Notes
+## ⚙️ Installation
 
-- API keys are loaded via `.env` — never committed to git (`.gitignore` covers `.env`)
-- `.env.example` is committed as a template showing required keys without real values
-- Input queries are passed directly to Groq prompts — no SQL or shell execution, so injection risk is low; standard LLM prompt-injection awareness applies
-
----
-
-## 📊 Production Considerations
-
-This project is designed as a portfolio demo. For a production deployment, the following changes would apply:
-
-| Area | Current | Production equivalent |
-|---|---|---|
-| State persistence | In-memory `ShoppingState` per session | Redis or PostgreSQL for multi-user persistence |
-| Authentication | None | Auth0 / Supabase for user accounts |
-| Search volume | SerpAPI free tier (100/month) | Paid SerpAPI plan or direct retailer API |
-| Logging | Per-conversation flat files | Structured JSON → Datadog / CloudWatch |
-| Deployment | Local Streamlit | Streamlit Cloud / Railway / GCP Cloud Run |
-| Secrets | `.env` file | AWS Secrets Manager / GCP Secret Manager |
-
-See [`docs/decisions.md`](docs/decisions.md) for the full reasoning behind every major design choice.
-
----
-
-## 📁 Documentation
-
-| File | Contents |
-|---|---|
-| [`docs/architecture.md`](docs/architecture.md) | Full node graph, state object schema, routing diagram, UI architecture |
-| [`docs/decisions.md`](docs/decisions.md) | 10 engineering decisions with reasoning, trade-offs, and known limitations |
-
----
-
-## 🧪 Running Tests
+### 1. Clone the repository
 
 ```bash
-# Install with dev dependencies
-pip install -e ".[dev]"
-
-# Run tests
-pytest
-
-# Dead code check
-vulture app.py src/
-
-# Lint
-ruff check src/
+git clone https://github.com/your-username/smart-shopping-agent.git
+cd smart-shopping-agent
 ```
+
+### 2. Create a virtual environment
+
+```bash
+python -m venv venv
+```
+
+#### Windows
+
+```bash
+venv\Scripts\activate
+```
+
+#### macOS / Linux
+
+```bash
+source venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Configure environment variables
+
+Create `.env` and add:
+
+```env
+GROQ_API_KEY=your_groq_api_key
+SERPAPI_API_KEY=your_serpapi_api_key
+```
+
+### 5. Run the application
+
+```bash
+streamlit run app.py
+```
+
+The application will be available at:
+
+```text
+http://localhost:8501
+```
+
+---
+
+## 💬 Example Interaction
+
+### New Search
+
+```text
+User:
+I want to buy a laptop
+
+Agent:
+Let's configure your requirements first.
+
+→ Budget
+→ RAM
+→ Processor
+→ Storage
+→ Usage
+→ Other preferences
+```
+
+After selecting specifications:
+
+```text
+User:
+₹60,000 - ₹80,000
+16GB RAM
+Windows
+Programming and development
+```
+
+The system then:
+
+```text
+Searches live products
+        ↓
+Validates product relevance
+        ↓
+Analyzes pricing
+        ↓
+Calculates recommendation score
+        ↓
+Selects top pick + alternatives
+```
+
+---
+
+### Follow-Up
+
+```text
+User:
+Is the first one good for programming?
+```
+
+The assistant identifies the referenced product from conversation memory and answers using the stored product information instead of performing an unnecessary new search.
+
+---
+
+### Chitchat
+
+```text
+User:
+Hi, what can you do?
+
+Agent:
+I can help you find and evaluate products based on your
+budget and requirements. What are you looking to buy?
+```
+
+---
+
+## 🎨 User Interface
+
+The Streamlit interface provides:
+
+- Conversational chat experience
+- Dynamic specification forms
+- Product recommendation cards
+- Product images
+- Ratings and review counts
+- Recommendation scores
+- Specification-match indicators
+- Pricing-risk warnings
+- Top Pick and alternative recommendations
+- Direct product links
+- Follow-up suggestion chips
+- Agent execution status
+- Conversation reset functionality
+
+The recommendation UI is designed to make the reasoning behind a product choice easy to understand rather than presenting a raw list of search results.
+
+---
+
+## 🔍 Pricing Risk Detection
+
+The pricing analysis system uses multiple signals instead of assuming that every large discount is fraudulent.
+
+### Category-Based Discount Signals
+
+Different product categories have different expected discount ranges.
+
+For example:
+
+```text
+Laptops / Phones       → lower expected discount range
+Electronics / TVs      → moderate expected range
+Shoes / Clothing       → higher expected range
+```
+
+### Additional Signals
+
+The system can consider:
+
+```text
+Discount percentage
+        +
+Original/current price ratio
+        +
+Peer-product price deviation
+        +
+Review evidence
+        +
+Rating evidence
+        ↓
+Pricing Risk Score
+```
+
+Peer comparisons use similar-product groups and robust statistics such as median and MAD to reduce the influence of extreme values.
+
+The resulting risk information is surfaced to the user as a warning rather than silently removing a product.
+
+---
+
+## 🧩 Design Principles
+
+### Deterministic Core + LLM Reasoning
+
+The project intentionally avoids allowing an LLM to control every part of the recommendation process.
+
+```text
+LLM
+├── Understand intent
+├── Interpret follow-ups
+├── Generate explanations
+└── Provide qualitative reasoning
+
+Python
+├── Product data handling
+├── Recommendation scoring
+├── Pricing-risk calculations
+├── Product selection
+├── IDs and links
+└── State management
+```
+
+This improves:
+
+- Reproducibility
+- Reliability
+- Debuggability
+- Data consistency
+- Protection against hallucinated product information
+
+---
+
+## 🛡️ Reliability & Error Handling
+
+The system includes failure handling for external services and individual pipeline stages.
+
+Examples include:
+
+- Missing API keys
+- SerpAPI failures
+- Search quota errors
+- Empty search results
+- Missing product information
+- LLM failures
+- Invalid structured responses
+- Missing product links
+- Incomplete ratings or review data
+
+The application maintains error information in the shared graph state so that failures can be surfaced without unnecessarily crashing the entire conversation.
+
+---
+
+## 🔐 Security
+
+API credentials are loaded from environment variables:
+
+```env
+GROQ_API_KEY=...
+SERPAPI_API_KEY=...
+```
+
+Recommended practices:
+
+- Keep `.env` out of version control
+- Never hard-code API keys
+- Use `.env.example` for sharing required variable names
+- Avoid exposing secrets in logs or screenshots
+
+---
+
+## 📈 Future Improvements
+
+Possible extensions include:
+
+- Persistent user accounts and long-term preferences
+- Database-backed conversation memory
+- More retailer-specific product sources
+- Price-history tracking
+- Price-drop alerts
+- Personalized recommendation weights
+- Better product deduplication
+- More advanced semantic product matching
+- Automated evaluation of recommendation quality
+- Production-grade observability and analytics
+- Authentication and multi-user persistence
 
 ---
 
 ## 👤 Author
 
-Built by **Nishit Kumar**
+**Nishit Kumar**
 
-- [LinkedIn](https://www.linkedin.com/in/nishit-12-kumar/)
-
----
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+[LinkedIn](https://www.linkedin.com/in/nishit-12-kumar/)
 
