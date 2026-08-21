@@ -6,7 +6,9 @@ from src.shopping_agent.utils.logger import agent_logger
 
 
 @lru_cache(maxsize=None)
-def get_groq_llm(model_name: str = "llama-3.3-70b-versatile", temperature: float = 0.0) -> ChatGroq:
+
+# def get_groq_llm(model_name: str = "llama-3.3-70b-versatile", temperature: float = 0.0) -> ChatGroq:
+def get_groq_llm(model_name: str = "openai/gpt-oss-120b", temperature: float = 0.0) -> ChatGroq:
     try:
         llm = ChatGroq(
             groq_api_key=GROQ_API_KEY,
@@ -25,7 +27,8 @@ def get_groq_llm(model_name: str = "llama-3.3-70b-versatile", temperature: float
 
 class GroqClient:
     
-    def __init__(self, model_name: str = "llama-3.3-70b-versatile", temperature: float = 0.0):
+    # def __init__(self, model_name: str = "llama-3.3-70b-versatile", temperature: float = 0.0):
+    def __init__(self, model_name: str = "openai/gpt-oss-120b", temperature: float = 0.0):
         self.llm = get_groq_llm(model_name, temperature)
 
     def get_llm(self):
