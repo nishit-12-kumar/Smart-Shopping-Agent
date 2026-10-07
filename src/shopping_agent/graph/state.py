@@ -1,38 +1,253 @@
 from typing import TypedDict, List, Dict, Any, Optional
 
+
 class ProductSummary(TypedDict):
-    id: str                      
+    id: str
     title: str
+
     price: Optional[float]
     rating: Optional[float]
     reviews: Optional[int]
+
+    # LLM-based semantic/relevance score.
     confidence_score: Optional[float]
+
+    # Deterministic requirement-match score.
+    #
+    # Example:
+    #   budget matched
+    #   RAM matched
+    #   category matched
+    #   storage matched
+    #
+    # Calculated in validate_deals.py.
+    deterministic_match_score: Optional[float]
+
+    # Hybrid score:
+    #
+    # 70% deterministic requirement match
+    # 30% LLM semantic/relevance score
+    #
+    # Calculated in synthesize.py.
+    hybrid_match_score: Optional[float]
+
+    # Final recommendation score:
+    #
+    # 50% hybrid match
+    # 15% rating
+    # 10% reviews
+    # 10% price value
+    # 15% pricing trust
+    recommendation_score: Optional[float]
+
+    # Pricing-risk information.
+    pricing_risk_score: Optional[float]
+    pricing_risk_level: Optional[str]
     is_suspicious_pricing: Optional[bool]
 
 
 class SearchTurn(TypedDict):
-    # One past search: the query that produced it, and the products shown.
+    """
+    One past search.
+
+    Stores the original query plus compact product summaries.
+    """
+
     query: str
     products: List[ProductSummary]
 
 
 class ShoppingState(TypedDict):
 
-    user_query: str                                # Raw text of the user's latest message
-    clarification_needed: bool                     # True if parse_query couldn't extract enough specs to search
-    search_params: Optional[Dict[str, Any]]        # Structured specs (category, budget, etc.) extracted by parse_query
-    raw_products: List[Dict[str, Any]]             # Unprocessed listings returned by search_products (SerpAPI or mock fallback)
-    serpapi_error_message: Optional[str]           # Set if the SerpAPI call fails, so the UI/logs can surface the reason
-    validated_deals: List[Dict[str, Any]]          # Products after confidence scoring (validate_deals) and price-sanity checks (price_validity)
-    message_type: str                              # "CHITCHAT" or "SHOPPING"  -- set by classify_message_type_node, drives the first routing decision
-    final_recommendation: str                      # LLM-generated reasoning text produced by synthesize_node
-    structured_recommendation: Optional[Dict[str, Any]]   # Deterministic top pick + alternatives assembled in Python by synthesize_node
-    errors: List[str]                              # Accumulated non-fatal error messages from any node in the pipeline
+    user_query: str
+    # Raw text of the latest user message.
 
-    # --- Multi-turn memory fields ---
-    conversation_history: List[Dict[str, Any]]     # Full chat history for the session, used for follow-up context
-    last_shown_deals: List[Dict[str, Any]]         # Full product dicts from the MOST RECENT search only — kept for answer_followup's detailed answers (price, reasoning, source, etc.)
-    search_history: List[SearchTurn]               # Lightweight, ID'd product summaries from the last few searches (see MAX_HISTORY_TURNS in synthesize.py) — this is what classify_intent reasons over, so it can look further back than just the last search
-    search_turn_count: int                         # Total searches performed this session, ALWAYS incrementing (never trimmed) — used to build unique product ids (e.g. "s4p1") even after old turns roll out of search_history
-    intent: str   # "NEW" or "FOLLOW_UP" -- set by classify_intent_node, drives routing after message-type classification
+    clarification_needed: bool
+    # True if parse_query determines that the user did not provide
+    # enough information to continue with a product search.
 
+    search_params: Optional[Dict[str, Any]]
+    # Structured information associated with the current request.
+    #
+    # Example:
+    # {
+    #     "category": "laptop",
+    #     "budget": 60000,
+    #     "referenced_product_id": "s1p2"
+    # }
+
+    # =========================================================================
+    # SEARCH / PRODUCT PROCESSING
+    # =========================================================================
+
+    raw_products: List[Dict[str, Any]]
+    # Raw/unprocessed product listings returned by SerpAPI
+    # or the configured fallback source.
+
+    serpapi_error_message: Optional[str]
+    # Error message if the SerpAPI request fails.
+
+    validated_deals: List[Dict[str, Any]]
+    # Products after:
+    #
+    # 1. LLM semantic validation
+    # 2. Deterministic requirement matching
+    # 3. Other validation / pricing checks
+    #
+    # Each product can contain fields such as:
+    #
+    # confidence_score
+    # deterministic_match_score
+    # deterministic_match_components
+    # deterministic_match_reasons
+    # hybrid_match_score
+    # hybrid_match_details
+    # pricing_risk_score
+    # pricing_risk_level
+    # recommendation_score
+    #
+    # These fields are stored dynamically inside the product dictionaries.
+
+    # =========================================================================
+    # AGENT ROUTING
+    # =========================================================================
+
+    message_type: str
+    # "CHITCHAT" or "SHOPPING".
+    #
+    # Set by classify_message_type_node.
+
+    intent: str
+    # "NEW" or "FOLLOW_UP".
+    #
+    # Set by classify_intent_node.
+
+    # =========================================================================
+    # FINAL OUTPUT
+    # =========================================================================
+
+    final_recommendation: str
+    # Final natural-language response generated by the agent.
+
+    structured_recommendation: Optional[Dict[str, Any]]
+    # Deterministic recommendation structure created by synthesize_node.
+    #
+    # Contains:
+    # - top pick
+    # - alternatives
+    # - recommendation scores
+    # - pricing information
+    # - pricing warnings
+    # - follow-up suggestions
+
+    errors: List[str]
+    # Accumulated non-fatal errors from different nodes.
+
+    # =========================================================================
+    # MULTI-TURN MEMORY
+    # =========================================================================
+
+    conversation_history: List[Dict[str, Any]]
+    # Conversation-level history.
+    #
+    # Currently stores information such as:
+    # {
+    #     "user_query": "...",
+    #     "products_shown": [...]
+    # }
+    #
+    # This can be expanded later to store:
+    # - assistant response
+    # - intent
+    # - referenced product ID
+    # - turn ID
+    #
+    # without changing the overall architecture.
+
+    last_shown_deals: List[Dict[str, Any]]
+    # Full product dictionaries from the MOST RECENT search only.
+    #
+    # This is still useful for:
+    # 1. Rendering the latest recommendation cards.
+    # 2. Immediate follow-up questions.
+    #
+    # IMPORTANT:
+    # This is no longer the complete product memory.
+    # Older products are available through product_memory.
+
+    search_history: List[SearchTurn]
+    # Compact summaries of recent searches.
+    #
+    # Used mainly by classify_intent_node to understand references such as:
+    #
+    # "the first one"
+    # "option 2"
+    # "the Lenovo one"
+    # "compare the second and third"
+    #
+    # Only recent turns are retained here to prevent the LLM prompt
+    # from growing indefinitely.
+
+    # =========================================================================
+    # LONG-TERM PRODUCT MEMORY
+    # =========================================================================
+
+    product_memory: Dict[str, Dict[str, Any]]
+    # Full product records indexed by stable session-level product ID.
+    #
+    # Example:
+    #
+    # {
+    #     "s1p1": {
+    #         "id": "s1p1",
+    #         "title": "HP Victus 15",
+    #         "price": 62999,
+    #         "rating": 4.4,
+    #         "reviews": 1250,
+    #         "confidence_score": 88,
+    #         "deterministic_match_score": 95,
+    #         "hybrid_match_score": 92.9,
+    #         "recommendation_score": 90.8,
+    #         ...
+    #     },
+    #
+    #     "s2p1": {
+    #         "id": "s2p1",
+    #         "title": "MacBook Air",
+    #         ...
+    #     }
+    # }
+    #
+    # This allows a follow-up to reference products from older searches.
+    #
+    # Example:
+    #
+    # User:
+    #     "What about that HP Victus I saw earlier?"
+    #
+    # classify_intent:
+    #     referenced_product_id = "s1p1"
+    #
+    # answer_followup:
+    #     product_memory["s1p1"]
+    #
+    # This works even when "s1p1" is no longer in last_shown_deals.
+
+    # =========================================================================
+    # SEARCH COUNTER
+    # =========================================================================
+
+    search_turn_count: int
+    # Total number of searches performed in the current session.
+    #
+    # This counter is NEVER trimmed when search_history is trimmed.
+    #
+    # It guarantees stable unique IDs such as:
+    #
+    # s1p1
+    # s1p2
+    # s2p1
+    # s2p2
+    # s3p1
+    #
+    # even after older search_history entries are removed.

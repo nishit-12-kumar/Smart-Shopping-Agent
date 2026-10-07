@@ -16,6 +16,7 @@ from src.shopping_agent.utils.logger import agent_logger
 # IMPORTANT:
 # These are NOT proof that a discount is fake.
 # They are only one signal contributing to the pricing-risk score.
+
 CATEGORY_MAX_DISCOUNT = {
     "laptop": 0.40,
     "phone": 0.40,
